@@ -184,6 +184,7 @@ INSTALLED_APPS = (
     'zds.article',
     'zds.forum',
     'zds.tutorial',
+    'zds.tutorialv2',
     'zds.member',
     # Uncomment the next line to enable the admin:
     'django.contrib.admin',
@@ -421,7 +422,8 @@ ZDS_APP = {
         'repo_public_path': os.path.join(SITE_ROOT, 'tutoriels-public'),
         'default_license_pk': 7,
         'home_number': 5,
-        'helps_per_page': 20
+        'helps_per_page': 20,
+        'max_tree_depth': 3
     },
     'forum': {
         'posts_per_page': 21,
