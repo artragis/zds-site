@@ -217,25 +217,25 @@ class PublishableContent(Container):
 
     def get_absolute_url(self):
         """gets the url to access the tutorial when offline"""
-        return reverse('zds.tutorial.views.view_tutorial', args=[
+        return reverse('zds.tutorialv2.views.view_tutorial', args=[
             self.pk, slugify(self.title)
         ])
 
     def get_absolute_url_online(self):
-        return reverse('zds.tutorial.views.view_tutorial_online', args=[
+        return reverse('zds.tutorialv2.views.view_tutorial_online', args=[
             self.pk, slugify(self.title)
         ])
 
     def get_absolute_url_beta(self):
         if self.sha_beta is not None:
-            return reverse('zds.tutorial.views.view_tutorial', args=[
+            return reverse('zds.tutorialv2.views.view_tutorial', args=[
                 self.pk, slugify(self.title)
             ]) + '?version=' + self.sha_beta
         else:
             return self.get_absolute_url()
 
     def get_edit_url(self):
-        return reverse('zds.tutorial.views.modify_tutorial') + \
+        return reverse('zds.tutorialv2.views.modify_tutorial') + \
             '?tutorial={0}'.format(self.pk)
 
     def in_beta(self):
@@ -297,24 +297,24 @@ class PublishableContent(Container):
 
         # url:
         mandata['get_absolute_url'] = reverse(
-            'zds.tutorial.views.view_tutorial',
+            'zds.tutorialv2.views.view_tutorial',
             args=[self.pk, mandata['slug']]
         )
 
         if self.in_beta():
             mandata['get_absolute_url_beta'] = reverse(
-                'zds.tutorial.views.view_tutorial',
+                'zds.tutorialv2.views.view_tutorial',
                 args=[self.pk, mandata['slug']]
             ) + '?version=' + self.sha_beta
 
         else:
             mandata['get_absolute_url_beta'] = reverse(
-                'zds.tutorial.views.view_tutorial',
+                'zds.tutorialv2.views.view_tutorial',
                 args=[self.pk, mandata['slug']]
             )
 
         mandata['get_absolute_url_online'] = reverse(
-            'zds.tutorial.views.view_tutorial_online',
+            'zds.tutorialv2.views.view_tutorial_online',
             args=[self.pk, mandata['slug']]
         )
 
