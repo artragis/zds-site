@@ -102,7 +102,6 @@ class ContainerFactory(factory.Factory):
 
 class ExtractFactory(factory.Factory):
     FACTORY_FOR = Extract
-
     title = factory.Sequence(lambda n: 'Mon extrait No{0}'.format(n+1))
     pk = factory.Sequence(lambda n: n+1)
 
@@ -117,7 +116,6 @@ class ExtractFactory(factory.Factory):
         top_container = extract.container.top_container()
 
         repo = Repo(top_container.get_path())
-
         f = open(extract.get_path(), 'w')
         f.write(text_content.encode('utf-8'))
         f.close()
