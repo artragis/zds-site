@@ -62,7 +62,7 @@ from zds.utils.misc import compute_hash, content_has_changed
 from django.utils.translation import ugettext as _
 from django.views.generic import ListView, DetailView  # , UpdateView
 # until we completely get rid of these, import them :
-from zds.tutorial.models import Tutorial, Chapter, Part, HelpWriting
+from zds.tutorial.models import Tutorial, Chapter, Part
 
 
 class ArticleList(ListView):
@@ -131,6 +131,7 @@ class TutorialWithHelp(TutorialList):
             # if no filter, no need to change
             pass
         return query_set
+
     def get_context_data(self, **kwargs):
         """Add all HelpWriting objects registered to the context so that the template can use it"""
         context = super(TutorialWithHelp, self).get_context_data(**kwargs)
