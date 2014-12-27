@@ -26,6 +26,7 @@ from zds.utils.models import SubCategory, Licence, Comment
 from zds.utils.tutorials import get_blob
 from zds.utils.tutorialv2 import export_content
 from zds.settings import ZDS_APP
+from zds.utils.models import HelpWriting
 
 
 TYPE_CHOICES = (
@@ -494,8 +495,10 @@ class PublishableContent(models.Model):
     licence = models.ForeignKey(Licence,
                                 verbose_name='Licence',
                                 blank=True, null=True, db_index=True)
-    # as of ZEP 12 this fiels is no longer the size but the type of content (article/tutorial)
+    # as of ZEP 12 this field is no longer the size but the type of content (article/tutorial)
     type = models.CharField(max_length=10, choices=TYPE_CHOICES, db_index=True)
+    #zep03 field
+    helps = models.ManyToManyField(HelpWriting, verbose_name='Aides', db_index=True)
 
     relative_images_path = models.CharField(
         'chemin relatif images',
