@@ -61,6 +61,8 @@ from zds.utils.tutorials import get_blob, export_tutorial_to_md, move, get_sep, 
 from zds.utils.misc import compute_hash, content_has_changed
 from django.utils.translation import ugettext as _
 from django.views.generic import ListView, DetailView  # , UpdateView
+# until we completely get rid of these, import them :
+from zds.tutorial.models import Tutorial
 
 
 class ArticleList(ListView):
@@ -90,6 +92,7 @@ class ArticleList(ListView):
     def get_context_data(self, **kwargs):
         context = super(ArticleList, self).get_context_data(**kwargs)
         context['tag'] = self.tag
+        # TODO in database, the information concern the draft, so we have to make stuff here !
         return context
 
 
@@ -98,7 +101,7 @@ class TutorialList(ArticleList):
 
     context_object_name = 'tutorials'
     type = "TUTORIAL"
-    template_name = 'tutorial/index.html'
+    template_name = 'tutorialv2/index.html'
 
 
 def render_chapter_form(chapter):
@@ -117,7 +120,7 @@ class TutorialWithHelp(TutorialList):
     """List all tutorial that needs help, i.e registered as needing at least one HelpWriting or is in beta
     for more documentation, have a look to ZEP 03 specification (fr)"""
     context_object_name = 'tutorials'
-    template_name = 'tutorial/help.html'
+    template_name = 'tutorialv2/help.html'
 
     def get_queryset(self):
         """get only tutorial that need help and handle filtering if asked"""
@@ -139,18 +142,22 @@ class TutorialWithHelp(TutorialList):
         context['helps'] = HelpWriting.objects.all()
         return context
 
+# TODO ArticleWithHelp
+
 
 class DisplayContent(DetailView):
     """Base class that can show any content in any state, by default it shows offline tutorials"""
 
     model = PublishableContent
-    template_name = 'tutorial/view.html'
+    template_name = 'tutorialv2/view.html'
     type = "TUTORIAL"
-    is_public = False
+    online = False
+    sha = None
 
+    # TODO compatibility should be performed into class `PublishableContent.load_version()` !
     def compatibility_parts(self, content, repo, sha, dictionary, cpt_p):
         dictionary["tutorial"] = content
-        dictionary["path"] = content.get_path()
+        dictionary["path"] = content.get_repo_path()
         dictionary["slug"] = slugify(dictionary["title"])
         dictionary["position_in_tutorial"] = cpt_p
 
@@ -165,22 +172,21 @@ class DisplayContent(DetailView):
 
     def compatibility_chapter(self, content, repo, sha, dictionary):
         """enable compatibility with old version of mini tutorial and chapter implementations"""
-        dictionary["path"] = content.get_path()
+        dictionary["path"] = content.get_repo_path()
         dictionary["type"] = self.type
         dictionary["pk"] = Container.objects.get(parent=content).pk  # TODO : find better name
         dictionary["intro"] = get_blob(repo.commit(sha).tree, "introduction.md")
         dictionary["conclu"] = get_blob(repo.commit(sha).tree, "conclusion.md")
-        # load extracts
         cpt = 1
         for ext in dictionary["extracts"]:
             ext["position_in_chapter"] = cpt
-            ext["path"] = content.get_path()
+            ext["path"] = content.get_repo_path()
             ext["txt"] = get_blob(repo.commit(sha).tree, ext["text"])
             cpt += 1
 
     def get_forms(self, context, content):
         """get all the auxiliary forms about validation, js fiddle..."""
-        validation = Validation.objects.filter(tutorial__pk=content.pk)\
+        validation = Validation.objects.filter(content__pk=content.pk)\
             .order_by("-date_proposition")\
             .first()
         form_js = ActivJsForm(initial={"js_support": content.js_support})
@@ -199,19 +205,20 @@ class DisplayContent(DetailView):
         context["formValid"] = form_valid
         context["formReject"] = form_reject,
 
-    def get_object(self):
-        return get_object_or_404(PublishableContent, pk=self.kwargs['content_pk'])
+    def get_object(self, queryset=None):
+        return get_object_or_404(PublishableContent, slug=self.kwargs['content_slug'])
 
     def get_context_data(self, **kwargs):
         """Show the given tutorial if exists."""
+        # TODO: handling public version !
 
         context = super(DisplayContent, self).get_context_data(**kwargs)
-        content = context[self.context_object_name]
+        content = context['object']
+
         # Retrieve sha given by the user. This sha must to be exist. If it doesn't
         # exist, we take draft version of the content.
-
         try:
-            sha = self.request.GET.get("version")
+            sha = self.request.GET["version"]
         except KeyError:
             if self.sha is not None:
                 sha = self.sha
@@ -219,40 +226,16 @@ class DisplayContent(DetailView):
                 sha = content.sha_draft
 
         # check that if we ask for beta, we also ask for the sha version
-        is_beta = (sha == content.sha_beta and content.in_beta())
-        # check that if we ask for public version, we also ask for the sha version
-        is_online = (sha == content.sha_public and content.is_online())
-        # Only authors of the tutorial and staff can view tutorial in offline.
+        is_beta = content.is_beta(sha)
 
-        if self.request.user not in content.authors.all() and not is_beta and not is_online:
+        if self.request.user not in content.authors.all() and not is_beta:
             # if we are not author of this content or if we did not ask for beta
             # the only members that can display and modify the tutorial are validators
             if not self.request.user.has_perm("tutorial.change_tutorial"):
                 raise PermissionDenied
 
-        # Find the good manifest file
-
-        repo = Repo(content.get_path())
-
-        # Load the tutorial.
-
-        mandata = content.load_json_for_public(sha)
-        content.load_dic(mandata, sha)
-        content.load_introduction_and_conclusion(mandata, sha, sha == content.sha_public)
-        children_tree = {}
-
-        if 'chapter' in mandata:
-            # compatibility with old "Mini Tuto"
-            self.compatibility_chapter(content, repo, sha, mandata["chapter"])
-            children_tree = mandata['chapter']
-        elif 'parts' in mandata:
-            # compatibility with old "big tuto".
-            parts = mandata["parts"]
-            cpt_p = 1
-            for part in parts:
-                self.compatibility_parts(content, repo, sha, part, cpt_p)
-                cpt_p += 1
-            children_tree = parts
+        # load versioned file
+        versioned_tutorial = content.load_version(sha)
 
         # check whether this tuto support js fiddle
         if content.js_support:
@@ -260,8 +243,7 @@ class DisplayContent(DetailView):
         else:
             is_js = ""
         context["is_js"] = is_js
-        context["tutorial"] = mandata  # TODO : change to "content"
-        context["children"] = children_tree
+        context["tutorial"] = versioned_tutorial
         context["version"] = sha
         self.get_forms(context, content)
 
@@ -292,7 +274,7 @@ class DisplayDiff(DetailView):
             if not self.request.user.has_perm("tutorial.change_tutorial"):
                 raise PermissionDenied
         # open git repo and find diff between displayed version and head
-        repo = Repo(context[self.context_object_name].get_path())
+        repo = Repo(context[self.context_object_name].get_repo_path())
         current_version_commit = repo.commit(sha)
         diff_with_head = current_version_commit.diff("HEAD~1")
         context["path_add"] = diff_with_head.iter_change_type("A")
@@ -318,7 +300,7 @@ class DisplayOnlineContent(DisplayContent):
 
     def compatibility_parts(self, content, repo, sha, dictionary, cpt_p):
         dictionary["tutorial"] = content
-        dictionary["path"] = content.get_path()
+        dictionary["path"] = content.get_repo_path()
         dictionary["slug"] = slugify(dictionary["title"])
         dictionary["position_in_tutorial"] = cpt_p
 
@@ -350,7 +332,7 @@ class DisplayOnlineContent(DisplayContent):
     def get_context_data(self, **kwargs):
         content = self.get_object()
         # If the tutorial isn't online, we raise 404 error.
-        if not content.is_online():
+        if not content.in_public():
             raise Http404
         self.sha = content.sha_public
         context = super(DisplayOnlineContent, self).get_context_data(**kwargs)
@@ -521,7 +503,7 @@ def history(request, tutorial_pk, tutorial_slug):
         if not request.user.has_perm("tutorial.change_tutorial"):
             raise PermissionDenied
 
-    repo = Repo(tutorial.get_path())
+    repo = Repo(tutorial.get_repo_path())
     logs = repo.head.reference.log()
     logs = sorted(logs, key=attrgetter("time"), reverse=True)
     return render(request, "tutorial/tutorial/history.html",
@@ -1161,7 +1143,7 @@ def add_tutorial(request):
             tutorial.save()
             maj_repo_tuto(
                 request,
-                new_slug_path=tutorial.get_path(),
+                new_slug_path=tutorial.get_repo_path(),
                 tuto=tutorial,
                 introduction=data["introduction"],
                 conclusion=data["conclusion"],
@@ -1197,8 +1179,8 @@ def edit_tutorial(request):
     if request.user not in tutorial.authors.all():
         if not request.user.has_perm("tutorial.change_tutorial"):
             raise PermissionDenied
-    introduction = os.path.join(tutorial.get_path(), "introduction.md")
-    conclusion = os.path.join(tutorial.get_path(), "conclusion.md")
+    introduction = os.path.join(tutorial.get_repo_path(), "introduction.md")
+    conclusion = os.path.join(tutorial.get_repo_path(), "conclusion.md")
     if request.method == "POST":
         form = TutorialForm(request.POST, request.FILES)
         if form.is_valid():
@@ -1220,7 +1202,7 @@ def edit_tutorial(request):
                                            "last_hash": compute_hash([introduction, conclusion]),
                                            "new_version": True
                                        })
-            old_slug = tutorial.get_path()
+            old_slug = tutorial.get_repo_path()
             tutorial.title = data["title"]
             tutorial.description = data["description"]
             if "licence" in data and data["licence"] != "":
@@ -1331,7 +1313,7 @@ def view_part(
 
     # find the good manifest file
 
-    repo = Repo(tutorial.get_path())
+    repo = Repo(tutorial.get_repo_path())
     manifest = get_blob(repo.commit(sha).tree, "manifest.json")
     mandata = json_reader.loads(manifest)
     tutorial.load_dic(mandata, sha=sha)
@@ -1343,7 +1325,7 @@ def view_part(
         if part_pk == str(part["pk"]):
             find = True
             part["tutorial"] = tutorial
-            part["path"] = tutorial.get_path()
+            part["path"] = tutorial.get_repo_path()
             part["slug"] = slugify(part["title"])
             part["position_in_tutorial"] = cpt_p
             part["intro"] = get_blob(repo.commit(sha).tree, part["introduction"])
@@ -1351,7 +1333,7 @@ def view_part(
             cpt_c = 1
             for chapter in part["chapters"]:
                 chapter["part"] = part
-                chapter["path"] = tutorial.get_path()
+                chapter["path"] = tutorial.get_repo_path()
                 chapter["slug"] = slugify(chapter["title"])
                 chapter["type"] = "BIG"
                 chapter["position_in_part"] = cpt_c
@@ -1360,7 +1342,7 @@ def view_part(
                 for ext in chapter["extracts"]:
                     ext["chapter"] = chapter
                     ext["position_in_chapter"] = cpt_e
-                    ext["path"] = tutorial.get_path()
+                    ext["path"] = tutorial.get_repo_path()
                     cpt_e += 1
                 cpt_c += 1
             final_part = part
@@ -1392,8 +1374,8 @@ def view_part_online(
 ):
     """Display a part."""
 
-    tutorial = get_object_or_404(PublishableContent, pk=tutorial_pk)
-    if not tutorial.is_online():
+    tutorial = get_object_or_404(Tutorial, pk=tutorial_pk)
+    if not tutorial.in_public():
         raise Http404
 
     # find the good manifest file
@@ -1676,7 +1658,7 @@ def view_chapter(
 
     # find the good manifest file
 
-    repo = Repo(tutorial.get_path())
+    repo = Repo(tutorial.get_repo_path())
     manifest = get_blob(repo.commit(sha).tree, "manifest.json")
     mandata = json_reader.loads(manifest)
     tutorial.load_dic(mandata, sha=sha)
@@ -1700,7 +1682,7 @@ def view_chapter(
         part["tutorial"] = tutorial
         for chapter in part["chapters"]:
             chapter["part"] = part
-            chapter["path"] = tutorial.get_path()
+            chapter["path"] = tutorial.get_repo_path()
             chapter["slug"] = slugify(chapter["title"])
             chapter["type"] = "BIG"
             chapter["position_in_part"] = cpt_c
@@ -1718,7 +1700,7 @@ def view_chapter(
                 for ext in chapter["extracts"]:
                     ext["chapter"] = chapter
                     ext["position_in_chapter"] = cpt_e
-                    ext["path"] = tutorial.get_path()
+                    ext["path"] = tutorial.get_repo_path()
                     ext["txt"] = get_blob(repo.commit(sha).tree, ext["text"])
                     cpt_e += 1
             chapter_tab.append(chapter)
@@ -1763,8 +1745,8 @@ def view_chapter_online(
 ):
     """View chapter."""
 
-    tutorial = get_object_or_404(PublishableContent, pk=tutorial_pk)
-    if not tutorial.is_online():
+    tutorial = get_object_or_404(Tutorial, pk=tutorial_pk)
+    if not tutorial.in_public():
         raise Http404
 
     # find the good manifest file
@@ -2370,9 +2352,9 @@ def upload_images(images, tutorial):
     # download images
 
     zfile = zipfile.ZipFile(images, "a")
-    os.makedirs(os.path.abspath(os.path.join(tutorial.get_path(), "images")))
+    os.makedirs(os.path.abspath(os.path.join(tutorial.get_repo_path(), "images")))
     for i in zfile.namelist():
-        ph_temp = os.path.abspath(os.path.join(tutorial.get_path(), i))
+        ph_temp = os.path.abspath(os.path.join(tutorial.get_repo_path(), i))
         try:
             data = zfile.read(i)
             fp = open(ph_temp, "wb")
@@ -2762,7 +2744,7 @@ def maj_repo_part(
     msg=None,
 ):
 
-    repo = Repo(part.tutorial.get_path())
+    repo = Repo(part.tutorial.get_repo_path())
     index = repo.index
     if action == "del":
         shutil.rmtree(old_slug_path)
@@ -2780,19 +2762,19 @@ def maj_repo_part(
             msg = _(u"Création de la partie «{}» {} {}").format(part.title, get_sep(msg), get_text_is_empty(msg))\
                 .strip()
         index.add([part.get_phy_slug()])
-        man_path = os.path.join(part.tutorial.get_path(), "manifest.json")
+        man_path = os.path.join(part.tutorial.get_repo_path(), "manifest.json")
         part.tutorial.dump_json(path=man_path)
         index.add(["manifest.json"])
         if introduction is not None:
             intro = open(os.path.join(new_slug_path, "introduction.md"), "w")
             intro.write(smart_str(introduction).strip())
             intro.close()
-            index.add([os.path.join(part.get_path(relative=True), "introduction.md")])
+            index.add([os.path.join(part.get_repo_path(relative=True), "introduction.md")])
         if conclusion is not None:
             conclu = open(os.path.join(new_slug_path, "conclusion.md"), "w")
             conclu.write(smart_str(conclusion).strip())
             conclu.close()
-            index.add([os.path.join(part.get_path(relative=True), "conclusion.md"
+            index.add([os.path.join(part.get_repo_path(relative=True), "conclusion.md"
                                     )])
     aut_user = str(request.user.pk)
     aut_email = str(request.user.email)
@@ -2861,10 +2843,10 @@ def maj_repo_chapter(
     # update manifest
 
     if chapter.tutorial:
-        man_path = os.path.join(chapter.tutorial.get_path(), "manifest.json")
+        man_path = os.path.join(chapter.tutorial.get_repo_path(), "manifest.json")
         chapter.tutorial.dump_json(path=man_path)
     else:
-        man_path = os.path.join(chapter.part.tutorial.get_path(),
+        man_path = os.path.join(chapter.part.tutorial.get_repo_path(),
                                 "manifest.json")
         chapter.part.tutorial.dump_json(path=man_path)
     index.add(["manifest.json"])
@@ -2926,14 +2908,14 @@ def maj_repo_extract(
         ext = open(new_slug_path, "w")
         ext.write(smart_str(text).strip())
         ext.close()
-        index.add([extract.get_path(relative=True)])
+        index.add([extract.get_repo_path(relative=True)])
 
     # update manifest
     if chap.tutorial:
-        man_path = os.path.join(chap.tutorial.get_path(), "manifest.json")
+        man_path = os.path.join(chap.tutorial.get_repo_path(), "manifest.json")
         chap.tutorial.dump_json(path=man_path)
     else:
-        man_path = os.path.join(chap.part.tutorial.get_path(), "manifest.json")
+        man_path = os.path.join(chap.part.tutorial.get_repo_path(), "manifest.json")
         chap.part.tutorial.dump_json(path=man_path)
 
     index.add(["manifest.json"])
@@ -2973,7 +2955,7 @@ def download(request):
     repo_path = os.path.join(settings.ZDS_APP['tutorial']['repo_path'], tutorial.get_phy_slug())
     repo = Repo(repo_path)
     sha = tutorial.sha_draft
-    if 'online' in request.GET and tutorial.is_online():
+    if 'online' in request.GET and tutorial.in_public():
         sha = tutorial.sha_public
     elif request.user not in tutorial.authors.all():
         if not request.user.has_perm('tutorial.change_tutorial'):

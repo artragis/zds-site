@@ -4,7 +4,7 @@ from math import ceil
 import shutil
 try:
     import ujson as json_reader
-except:
+except ImportError:
     try:
         import simplejson as json_reader
     except:
@@ -23,7 +23,8 @@ from git.repo import Repo
 from zds.gallery.models import Image, Gallery
 from zds.utils import slugify, get_current_user
 from zds.utils.models import SubCategory, Licence, Comment
-from zds.utils.tutorials import get_blob, export_tutorial
+from zds.utils.tutorials import get_blob
+from zds.utils.tutorialv2 import export_content
 from zds.settings import ZDS_APP
 from zds.utils.models import HelpWriting
 
@@ -45,7 +46,7 @@ class InvalidOperationError(RuntimeError):
     pass
 
 
-class Container(models.Model):
+class Container:
     """
     A container, which can have sub-Containers or Extracts.
 
@@ -54,71 +55,55 @@ class Container(models.Model):
 
     It has also a tree depth.
 
-    There is a `compatibility_pk` for compatibility with older versions.
+    A container could be either a tutorial/article, a part or a chapter.
     """
-    class Meta:
-        verbose_name = 'Container'
-        verbose_name_plural = 'Containers'
 
-    # TODO: clear all database related information ?
-
-    title = models.CharField('Titre', max_length=80)
-
-    slug = models.SlugField(max_length=80)
-
-    introduction = models.CharField(
-        'chemin relatif introduction',
-        blank=True,
-        null=True,
-        max_length=200)
-
-    conclusion = models.CharField(
-        'chemin relatif conclusion',
-        blank=True,
-        null=True,
-        max_length=200)
-
-    parent = models.ForeignKey("self",
-                               verbose_name='Conteneur parent',
-                               blank=True, null=True,
-                               on_delete=models.SET_NULL)
-
-    position_in_parent = models.IntegerField(verbose_name='position dans le conteneur parent',
-                                             blank=False,
-                                             null=False,
-                                             default=1)
+    title = ''
+    slug = ''
+    introduction = None
+    conclusion = None
+    parent = None
+    position_in_parent = 1
+    children = []
+    children_dict = {}
 
     # TODO: thumbnails ?
 
-    # integer key used to represent the tutorial or article old identifier for url compatibility
-    compatibility_pk = models.IntegerField(null=False, default=0)
+    def __init__(self, title, slug='', parent=None, position_in_parent=1):
+        self.title = title
+        self.slug = slug
+        self.parent = parent
+        self.position_in_parent = position_in_parent
 
-    def get_children(self):
-        """
-        :return: children of this container, ordered by position
-        """
-        if self.has_extract():
-            return Extract.objects.filter(container_pk=self.pk)
+        self.children = []  # even if you want, do NOT remove this line
+        self.children_dict = {}
 
-        return Container.objects.filter(parent_pk=self.pk).order_by('position_in_parent')
+    def __unicode__(self):
+        return u'<Conteneur \'{}\'>'.format(self.title)
 
-    def has_extract(self):
+    def has_extracts(self):
         """
+        Note : this function rely on the fact that the children can only be of one type.
         :return: `True` if the container has extract as children, `False` otherwise.
         """
-        return Extract.objects.filter(parent=self).count() > 0
+        if len(self.children) == 0:
+            return False
+        return isinstance(self.children[0], Extract)
 
-    def has_sub_container(self):
+    def has_sub_containers(self):
         """
-        :return: `True` if the container has other Containers as children, `False` otherwise.
+        Note : this function rely on the fact that the children can only be of one type.
+        :return: `True` if the container has containers as children, `False` otherwise.
         """
-        return Container.objects.filter(container=self).count() > 0
+        if len(self.children) == 0:
+            return False
+        return isinstance(self.children[0], Container)
 
     def get_last_child_position(self):
         """
-        :return: the relative position of the last child
+        :return: the position of the last child
         """
-        return Container.objects.filter(parent=self).count() + Extract.objects.filter(container=self).count()
+        return len(self.children)
 
     def get_tree_depth(self):
         """
@@ -136,90 +121,426 @@ class Container(models.Model):
             depth += 1
         return depth
 
-    def add_container(self, container):
+    def top_container(self):
+        """
+        :return: Top container (for which parent is `None`)
+        """
+        current = self
+        while current.parent is not None:
+            current = current.parent
+        return current
+
+    def add_container(self, container, generate_slug=False):
         """
         Add a child Container, but only if no extract were previously added and tree depth is < 2.
         :param container: the new container
+        :param generate_slug: if `True`, ask the top container an unique slug for this object
         """
-        if not self.has_extract():
+        if not self.has_extracts():
             if self.get_tree_depth() < ZDS_APP['tutorial']['max_tree_depth']:
+                if generate_slug:
+                    container.slug = self.top_container().get_unique_slug(container.title)
+                else:
+                    self.top_container().add_slug_to_pool(container.slug)
                 container.parent = self
-                container.position_in_parent = container.get_last_child_position() + 1
-                container.save()
+                container.position_in_parent = self.get_last_child_position() + 1
+                self.children.append(container)
+                self.children_dict[container.slug] = container
             else:
                 raise InvalidOperationError("Cannot add another level to this content")
         else:
             raise InvalidOperationError("Can't add a container if this container contains extracts.")
         # TODO: limitation if article ?
 
-    def get_phy_slug(self):
-        """
-        The slugified title is used to store physically the information in filesystem.
-        A "compatibility pk" can be used instead of real pk to ensure compatibility with previous versions.
-        :return: the slugified title
-        """
-        base = ""
-        if self.parent is not None:
-            base = self.parent.get_phy_slug()
-
-        used_pk = self.compatibility_pk
-        if used_pk == 0:
-            used_pk = self.pk
-
-        return os.path.join(base, str(used_pk) + '_' + self.slug)
-
-    def update_children(self):
-        """
-        Update all children of the container.
-        """
-        for child in self.get_children():
-            if child is Container:
-                self.introduction = os.path.join(self.get_phy_slug(), "introduction.md")
-                self.conclusion = os.path.join(self.get_phy_slug(), "conclusion.md")
-                self.save()
-                child.update_children()
-            else:
-                child.text = child.get_path(relative=True)
-            child.save()
-
-    def add_extract(self, extract):
+    def add_extract(self, extract, generate_slug=False):
         """
         Add a child container, but only if no container were previously added
         :param extract: the new extract
+        :param generate_slug: if `True`, ask the top container an unique slug for this object
         """
-        if not self.has_sub_container():
+        if not self.has_sub_containers():
+            if generate_slug:
+                extract.slug = self.top_container().get_unique_slug(extract.title)
+            else:
+                self.top_container().add_slug_to_pool(extract.slug)
             extract.container = self
-            extract.save()
+            extract.position_in_parent = self.get_last_child_position() + 1
+            self.children.append(extract)
+            self.children_dict[extract.slug] = extract
+
+    def update_children(self):
+        """
+        Update the path for introduction and conclusion for the container and all its children. If the children is an
+        extract, update the path to the text instead. This function is useful when `self.pk` or `self.title` has
+        changed.
+        Note : this function does not account for a different arrangement of the files.
+        """
+        self.introduction = os.path.join(self.get_path(relative=True), "introduction.md")
+        self.conclusion = os.path.join(self.get_path(relative=True), "conclusion.md")
+        for child in self.children:
+            if isinstance(child, Container):
+                child.update_children()
+            elif isinstance(child, Extract):
+                child.text = child.get_path(relative=True)
+
+    def get_path(self, relative=False):
+        """
+        Get the physical path to the draft version of the container.
+        Note: this function rely on the fact that the top container is VersionedContainer.
+        :param relative: if `True`, the path will be relative, absolute otherwise.
+        :return: physical path
+        """
+        base = ''
+        if self.parent:
+            base = self.parent.get_path(relative=relative)
+        return os.path.join(base, self.slug)
+
+    def get_prod_path(self):
+        """
+        Get the physical path to the public version of the container.
+        Note: this function rely on the fact that the top container is VersionedContainer.
+        :return: physical path
+        """
+        base = ''
+        if self.parent:
+            base = self.parent.get_prod_path()
+        return os.path.join(base, self.slug)
+
+    def get_introduction(self):
+        """
+        :return: the introduction from the file in `self.introduction`
+        """
+        if self.introduction:
+            return get_blob(self.top_container().repository.commit(self.top_container().current_version).tree,
+                            self.introduction)
+
+    def get_introduction_online(self):
+        """
+        Get introduction content of the public version
+        :return: the introduction
+        """
+        path = self.top_container().get_prod_path() + self.introduction + '.html'
+        if os.path.exists(path):
+            intro = open(path)
+            intro_content = intro.read()
+            intro.close()
+            return intro_content.decode('utf-8')
+
+    def get_conclusion(self):
+        """
+        :return: the conclusion from the file in `self.conclusion`
+        """
+        if self.introduction:
+            return get_blob(self.top_container().repository.commit(self.top_container().current_version).tree,
+                            self.conclusion)
+
+    def get_conclusion_online(self):
+        """
+        Get conclusion content of the public version
+        :return: the conclusion
+        """
+        path = self.top_container().get_prod_path() + self.conclusion + '.html'
+        if os.path.exists(path):
+            conclusion = open(path)
+            conclusion_content = conclusion.read()
+            conclusion.close()
+            return conclusion_content.decode('utf-8')
+
     # TODO:
-    # - rewrite save()
-    # - get_absolute_url_*() stuffs, get_path(), get_prod_path()
-    # - __unicode__()
-    # - get_introduction_*(), get_conclusion_*()
-    # - a `top_parent()` function to access directly to the parent PublishableContent and avoid the
-    #   `container.parent.parent.parent` stuff ?
-    # - a nice `delete_entity_and_tree()` function ? (which also remove the file)
+    # - get_absolute_url_*() stuffs (harder than it seems, because they cannot be written in a recursive way)
     # - the `maj_repo_*()` stuffs should probably be into the model ?
 
 
-class PublishableContent(Container):
+class Extract:
+    """
+    A content extract from a Container.
+
+    It has a title, a position in the parent container and a text.
+    """
+
+    title = ''
+    slug = ''
+    container = None
+    position_in_container = 1
+    text = None
+
+    def __init__(self, title, slug='', container=None, position_in_container=1):
+        self.title = title
+        self.slug = slug
+        self.container = container
+        self.position_in_container = position_in_container
+
+    def __unicode__(self):
+        return u'<Extrait \'{}\'>'.format(self.title)
+
+    def get_absolute_url(self):
+        """
+        :return: the url to access the tutorial offline
+        """
+        return '{0}#{1}-{2}'.format(
+            self.container.get_absolute_url(),
+            self.position_in_container,
+            slugify(self.title)
+        )
+
+    def get_absolute_url_online(self):
+        """
+        :return: the url to access the tutorial when online
+        """
+        return '{0}#{1}-{2}'.format(
+            self.container.get_absolute_url_online(),
+            self.position_in_container,
+            slugify(self.title)
+        )
+
+    def get_absolute_url_beta(self):
+        """
+        :return: the url to access the tutorial when in beta
+        """
+        return '{0}#{1}-{2}'.format(
+            self.container.get_absolute_url_beta(),
+            self.position_in_container,
+            slugify(self.title)
+        )
+
+    def get_path(self, relative=False):
+        """
+        Get the physical path to the draft version of the extract.
+        :param relative: if `True`, the path will be relative, absolute otherwise.
+        :return: physical path
+        """
+        return os.path.join(self.container.get_path(relative=relative), self.slug) + '.md'
+
+    def get_prod_path(self):
+        """
+        Get the physical path to the public version of a specific version of the extract.
+        :return: physical path
+        """
+        return os.path.join(self.container.get_prod_path(), self.slug) + '.md.html'
+        # TODO: should this function exists ? (there will be no public version of a text, all in parent container)
+
+    def get_text(self):
+        """
+        :return: versioned text
+        """
+        if self.text:
+            return get_blob(
+                self.container.top_container().repository.commit(self.container.top_container().current_version).tree,
+                self.text)
+
+    def get_text_online(self):
+        """
+        :return: public text of the extract
+        """
+        path = self.container.top_container().get_prod_path() + self.text + '.html'
+        if os.path.exists(path):
+            txt = open(path)
+            txt_content = txt.read()
+            txt.close()
+            return txt_content.decode('utf-8')
+
+
+class VersionedContent(Container):
+    """
+    This class is used to handle a specific version of a tutorial.tutorial
+
+    It is created from the "manifest.json" file, and could dump information in it.
+
+    For simplicity, it also contains DB information (but cannot modified them!), filled at the creation.
+    """
+
+    current_version = None
+    repository = None
+
+    # Metadata from json :
+    description = ''
+    type = ''
+    licence = None
+
+    slug_pool = {}
+
+    # Metadata from DB :
+    sha_draft = None
+    sha_beta = None
+    sha_public = None
+    sha_validation = None
+    is_beta = False
+    is_validation = False
+    is_public = False
+    in_beta = False
+    in_validation = False
+    in_public = False
+
+    have_markdown = False
+    have_html = False
+    have_pdf = False
+    have_epub = False
+
+    authors = None
+    subcategory = None
+    image = None
+    creation_date = None
+    pubdate = None
+    update_date = None
+    source = None
+
+    def __init__(self, current_version, _type, title, slug):
+        Container.__init__(self, title, slug)
+        self.current_version = current_version
+        self.type = _type
+        self.repository = Repo(self.get_path())
+
+        self.slug_pool = {'introduction': 1, 'conclusion': 1, slug: 1}  # forbidden slugs
+
+    def __unicode__(self):
+        return self.title
+
+    def get_absolute_url(self):
+        """
+        :return: the url to access the tutorial when offline
+        """
+        return reverse('view-tutorial-url', args=[self.slug])
+
+    def get_absolute_url_online(self):
+        """
+        :return: the url to access the tutorial when online
+        """
+        return reverse('zds.tutorialv2.views.view_tutorial_online', args=[self.slug])
+
+    def get_absolute_url_beta(self):
+        """
+        :return: the url to access the tutorial when in beta
+        """
+        if self.is_beta:
+            return self.get_absolute_url() + '?version=' + self.sha_beta
+        else:
+            return self.get_absolute_url()
+
+    def get_edit_url(self):
+        """
+        :return: the url to edit the tutorial
+        """
+        return reverse('zds.tutorialv2.views.modify_tutorial') + '?tutorial={0}'.format(self.slug)
+
+    def get_unique_slug(self, title):
+        """
+        Generate a slug from title, and check if it is already in slug pool. If it is the case, recursively add a
+        "-x" to the end, where "x" is a number starting from 1. When generated, it is added to the slug pool.
+        :param title: title from which the slug is generated (with `slugify()`)
+        :return: the unique slug
+        """
+        base = slugify(title)
+        try:
+            n = self.slug_pool[base]
+        except KeyError:
+            new_slug = base
+            self.slug_pool[base] = 0
+        else:
+            new_slug = base + '-' + str(n)
+        self.slug_pool[base] += 1
+        self.slug_pool[new_slug] = 1
+        return new_slug
+
+    def add_slug_to_pool(self, slug):
+        """
+        Add a slug to the slug pool to be taken into account when generate a unique slug
+        :param slug: the slug to add
+        """
+        try:
+            self.slug_pool[slug]  # test access
+        except KeyError:
+            self.slug_pool[slug] = 1
+        else:
+            raise Exception('slug "{}" already in the slug pool !'.format(slug))
+
+    def get_path(self, relative=False):
+        """
+        Get the physical path to the draft version of the Content.
+        :param relative: if `True`, the path will be relative, absolute otherwise.
+        :return: physical path
+        """
+        if relative:
+            return ''
+        else:
+            # get the full path (with tutorial/article before it)
+            return os.path.join(settings.ZDS_APP[self.type.lower()]['repo_path'], self.slug)
+
+    def get_prod_path(self):
+        """
+        Get the physical path to the public version of the content
+        :return: physical path
+        """
+        return os.path.join(settings.ZDS_APP[self.type.lower()]['repo_public_path'], self.slug)
+
+    def get_json(self):
+        """
+        :return: raw JSON file
+        """
+        dct = export_content(self)
+        data = json_writer.dumps(dct, indent=4, ensure_ascii=False)
+        return data
+
+    def dump_json(self, path=None):
+        """
+        Write the JSON into file
+        :param path: path to the file. If `None`, write in "manifest.json"
+        """
+        if path is None:
+            man_path = os.path.join(self.get_path(), 'manifest.json')
+        else:
+            man_path = path
+
+        json_data = open(man_path, "w")
+        json_data.write(self.get_json().encode('utf-8'))
+        json_data.close()
+
+
+def fill_containers_from_json(json_sub, parent):
+    """
+    Function which call itself to fill container
+    :param json_sub: dictionary from "manifest.json"
+    :param parent: the container to fill
+    """
+    # TODO should be static function of `VersionedContent`
+    # TODO should implement fallbacks
+    if 'children' in json_sub:
+        for child in json_sub['children']:
+            if child['object'] == 'container':
+                new_container = Container(child['title'], child['slug'])
+                if 'introduction' in child:
+                    new_container.introduction = child['introduction']
+                if 'conclusion' in child:
+                    new_container.conclusion = child['conclusion']
+                parent.add_container(new_container)
+                if 'children' in child:
+                    fill_containers_from_json(child, new_container)
+            elif child['object'] == 'extract':
+                new_extract = Extract(child['title'], child['slug'])
+                new_extract.text = child['text']
+                parent.add_extract(new_extract)
+            else:
+                raise Exception('Unknown object type'+child['object'])
+
+
+class PublishableContent(models.Model):
     """
     A tutorial whatever its size or an article.
 
-    A PublishableContent is a tree depth 0 Container (no parent) with additional information, such as
+    A PublishableContent retains metadata about a content in database, such as
+
     - authors, description, source (if the content comes from another website), subcategory and licence ;
     - Thumbnail and gallery ;
     - Creation, publication and update date ;
     - Public, beta, validation and draft sha, for versioning ;
     - Comment support ;
     - Type, which is either "ARTICLE" or "TUTORIAL"
-
-    These are two repositories : draft and online.
     """
     class Meta:
-        verbose_name = 'Tutoriel'
-        verbose_name_plural = 'Tutoriels'
-    # TODO: "Contenu" ?
+        verbose_name = 'Contenu'
+        verbose_name_plural = 'Contenus'
 
+    title = models.CharField('Titre', max_length=80)
+    slug = models.SlugField(max_length=80)
     description = models.CharField('Description', max_length=200)
     source = models.CharField('Source', max_length=200)
     authors = models.ManyToManyField(User, verbose_name='Auteurs', db_index=True)
@@ -262,12 +583,11 @@ class PublishableContent(Container):
     # zep03 field
     helps = models.ManyToManyField(HelpWriting, verbose_name='Aides', db_index=True)
 
-    images = models.CharField(
+    relative_images_path = models.CharField(
         'chemin relatif images',
         blank=True,
         null=True,
         max_length=200)
-    # TODO: rename this field ? (`relative_image_path` ?)
 
     last_note = models.ForeignKey('ContentReaction', blank=True, null=True,
                                   related_name='last_note',
@@ -275,37 +595,20 @@ class PublishableContent(Container):
     is_locked = models.BooleanField('Est verrouillé', default=False)
     js_support = models.BooleanField('Support du Javascript', default=False)
 
-    # TODO : split this class in two part (one for the DB object, another one for JSON [versionned] file) ?
-
     def __unicode__(self):
         return self.title
 
-    def get_absolute_url(self):
+    def get_repo_path(self, relative=False):
         """
-        :return: the url to access the tutorial when offline
+        Get the path to the tutorial repository
+        :param relative: if `True`, the path will be relative, absolute otherwise.
+        :return: physical path
         """
-        return reverse('zds.tutorialv2.views.view_tutorial', args=[self.pk, slugify(self.title)])
-
-    def get_absolute_url_online(self):
-        """
-        :return: the url to access the tutorial when online
-        """
-        return reverse('zds.tutorialv2.views.view_tutorial_online', args=[self.pk, slugify(self.title)])
-
-    def get_absolute_url_beta(self):
-        """
-        :return: the url to access the tutorial when in beta
-        """
-        if self.sha_beta is not None:
-            return self.get_absolute_url() + '?version=' + self.sha_beta
+        if relative:
+            return ''
         else:
-            return self.get_absolute_url()
-
-    def get_edit_url(self):
-        """
-        :return: the url to edit the tutorial
-        """
-        return reverse('zds.tutorialv2.views.modify_tutorial') + '?tutorial={0}'.format(self.pk)
+            # get the full path (with tutorial/article before it)
+            return os.path.join(settings.ZDS_APP[self.type.lower()]['repo_path'], self.slug)
 
     def in_beta(self):
         """
@@ -326,16 +629,38 @@ class PublishableContent(Container):
         A tutorial is not in draft if sha_draft is `None` or empty
         :return: `True` if the tutorial is in draft, `False` otherwise
         """
-        # TODO: probably always True !!
         return (self.sha_draft is not None) and (self.sha_draft.strip() != '')
 
-    def is_online(self):
+    def in_public(self):
         """
         A tutorial is not in on line if sha_public is `None` or empty
         :return: `True` if the tutorial is on line, `False` otherwise
         """
-        # TODO: for the logic with previous method, why not `in_public()` ?
         return (self.sha_public is not None) and (self.sha_public.strip() != '')
+
+    def is_beta(self, sha):
+        """
+        Is this version of the content the beta version ?
+        :param sha: version
+        :return: `True` if the tutorial is in beta, `False` otherwise
+        """
+        return self.in_beta() and sha == self.sha_beta
+
+    def is_validation(self, sha):
+        """
+        Is this version of the content the validation version ?
+        :param sha: version
+        :return: `True` if the tutorial is in validation, `False` otherwise
+        """
+        return self.in_validation() and sha == self.sha_validation
+
+    def is_public(self, sha):
+        """
+        Is this version of the content the published version ?
+        :param sha: version
+        :return: `True` if the tutorial is in public, `False` otherwise
+        """
+        return self.in_public() and sha == self.sha_public
 
     def is_article(self):
         """
@@ -349,221 +674,77 @@ class PublishableContent(Container):
         """
         return self.type == 'TUTORIAL'
 
-    def get_phy_slug(self):
+    def load_version(self, sha=None, public=False):
         """
-        :return: the physical slug, used to represent data in filesystem
+        Using git, load a specific version of the content. if `sha` is `None`, the draft/public version is used (if
+        `public` is `True`).
+        Note: for practical reason, the returned object is filled with information form DB.
+        :param sha: version
+        :param public: if `True`, use `sha_public` instead of `sha_draft` if `sha` is `None`
+        :return: the versioned content
         """
-        return str(self.pk) + "_" + self.slug
+        # load the good manifest.json
+        if sha is None:
+            if not public:
+                sha = self.sha_draft
+            else:
+                sha = self.sha_public
+        path = self.get_repo_path()
+        repo = Repo(path)
+        data = get_blob(repo.commit(sha).tree, 'manifest.json')
+        json = json_reader.loads(data)
 
-    def get_path(self, relative=False):
-        """
-        Get the physical path to the draft version of the Content.
-        :param relative: if `True`, the path will be relative, absolute otherwise.
-        :return: physical path
-        """
-        if relative:
-            return ''
+        # create and fill the container
+        versioned = VersionedContent(sha, self.type, json['title'], json['slug'])
+        if 'version' in json and json['version'] == 2:
+            # fill metadata :
+            if 'description' in json:
+                versioned.description = json['description']
+            if json['type'] == 'ARTICLE' or json['type'] == 'TUTORIAL':
+                versioned.type = json['type']
+            else:
+                versioned.type = self.type
+            if 'licence' in json:
+                versioned.licence = Licence.objects.filter(code=json['licence']).first()
+            # TODO must default licence be enforced here ?
+            if 'introduction' in json:
+                versioned.introduction = json['introduction']
+            if 'conclusion' in json:
+                versioned.conclusion = json['conclusion']
+            # then, fill container with children
+            fill_containers_from_json(json, versioned)
+            self.insert_data_in_versioned(versioned)
+
         else:
-            # get the full path (with tutorial/article before it)
-            return os.path.join(settings.ZDS_APP[self.type.lower()]['repo_path'], self.get_phy_slug())
-        # TODO: versionning ?!?
+            raise Exception('Importation of old version is not yet supported')
+            # TODO so here we can support old version !!
 
-    def get_prod_path(self, sha=None):
-        """
-        Get the physical path to the public version of the content
-        :param sha: version of the content, if `None`, public version is used
-        :return: physical path
-        """
-        data = self.load_json_for_public(sha)
-        return os.path.join(
-            settings.ZDS_APP[self.type.lower()]['repo_public_path'],
-            str(self.pk) + '_' + slugify(data['title']))
+        return versioned
 
-    def load_dic(self, mandata, sha=None):
+    def insert_data_in_versioned(self, versioned):
         """
-        Fill mandata with information from database model and add 'slug', 'is_beta', 'is_validation', 'is_on_line'.
-        :param mandata: a dictionary from JSON file
-        :param sha: current version, used to fill the `is_*` fields by comparison with the corresponding `sha_*`
+        Insert some additional data from database in a VersionedContent
+        :param versioned: the VersionedContent to fill
         """
-        # TODO: give it a more explicit name such as `insert_data_in_json()` ?
 
         fns = [
-            'is_big', 'is_mini', 'have_markdown', 'have_html', 'have_pdf', 'have_epub', 'get_path', 'in_beta',
-            'in_validation', 'on_line'
+            'have_markdown', 'have_html', 'have_pdf', 'have_epub', 'in_beta', 'in_validation', 'in_public',
+            'authors', 'subcategory', 'image', 'creation_date', 'pubdate', 'update_date', 'source', 'sha_draft',
+            'sha_beta', 'sha_validation', 'sha_public'
         ]
 
-        attrs = [
-            'pk', 'authors', 'subcategory', 'image', 'pubdate', 'update', 'source', 'sha_draft', 'sha_beta',
-            'sha_validation', 'sha_public'
-        ]
-
-        # load functions and attributs in tree
+        # load functions and attributs in `versioned`
         for fn in fns:
-            mandata[fn] = getattr(self, fn)
-        for attr in attrs:
-            mandata[attr] = getattr(self, attr)
+            setattr(versioned, fn, getattr(self, fn))
 
         # general information
-        mandata['slug'] = slugify(mandata['title'])
-        mandata['is_beta'] = self.in_beta() and self.sha_beta == sha
-        mandata['is_validation'] = self.in_validation() and self.sha_validation == sha
-        mandata['is_on_line'] = self.is_online() and self.sha_public == sha
-
-        # url:
-        mandata['get_absolute_url'] = reverse('zds.tutorialv2.views.view_tutorial', args=[self.pk, mandata['slug']])
-
-        if self.in_beta():
-            mandata['get_absolute_url_beta'] = reverse(
-                'zds.tutorialv2.views.view_tutorial',
-                args=[self.pk, mandata['slug']]
-            ) + '?version=' + self.sha_beta
-
-        else:
-            mandata['get_absolute_url_beta'] = reverse(
-                'zds.tutorialv2.views.view_tutorial',
-                args=[self.pk, mandata['slug']]
-            )
-
-        mandata['get_absolute_url_online'] = reverse(
-            'zds.tutorialv2.views.view_tutorial_online',
-            args=[self.pk, mandata['slug']]
-        )
-
-    def load_introduction_and_conclusion(self, mandata, sha=None, public=False):
-        """
-        Explicitly load introduction and conclusion to avoid useless disk access in `load_dic()`
-        :param mandata: dictionary from JSON file
-        :param sha: version
-        :param public: if `True`, get introduction and conclusion from the public version instead of the draft one
-        (`sha` is not used in this case)
-        """
-
-        if public:
-            mandata['get_introduction_online'] = self.get_introduction_online()
-            mandata['get_conclusion_online'] = self.get_conclusion_online()
-        else:
-            mandata['get_introduction'] = self.get_introduction(sha)
-            mandata['get_conclusion'] = self.get_conclusion(sha)
-
-    def load_json_for_public(self, sha=None):
-        """
-        Fetch the public version of the JSON file for this content.
-        :param sha: version
-        :return: a dictionary containing the structure of the JSON file.
-        """
-        if sha is None:
-            sha = self.sha_public
-        repo = Repo(self.get_path())  # should be `get_prod_path()` !?!
-        mantuto = get_blob(repo.commit(sha).tree, 'manifest.json')
-        data = json_reader.loads(mantuto)
-        if 'licence' in data:
-            data['licence'] = Licence.objects.filter(code=data['licence']).first()
-        return data
-
-    def dump_json(self, path=None):
-        """
-        Write the JSON into file
-        :param path: path to the file. If `None`, use default path.
-        """
-        if path is None:
-            man_path = os.path.join(self.get_path(), 'manifest.json')
-        else:
-            man_path = path
-
-        dct = export_tutorial(self)
-        data = json_writer.dumps(dct, indent=4, ensure_ascii=False)
-        json_data = open(man_path, "w")
-        json_data.write(data.encode('utf-8'))
-        json_data.close()
-
-    def get_introduction(self, sha=None):
-        """
-        Get the introduction content of a specific version
-        :param sha: version, if `None`, use draft one
-        :return: the introduction (as a string)
-        """
-        # find hash code
-        if sha is None:
-            sha = self.sha_draft
-        repo = Repo(self.get_path())
-
-        manifest = get_blob(repo.commit(sha).tree, "manifest.json")
-        content_version = json_reader.loads(manifest)
-        if "introduction" in content_version:
-            path_content_intro = content_version["introduction"]
-
-        if path_content_intro:
-            return get_blob(repo.commit(sha).tree, path_content_intro)
-
-    def get_introduction_online(self):
-        """
-        Get introduction content of the public version
-        :return: the introduction (as a string)
-        """
-        if self.is_online():
-            intro = open(
-                os.path.join(
-                    self.get_prod_path(),
-                    self.introduction +
-                    '.html'),
-                "r")
-            intro_contenu = intro.read()
-            intro.close()
-
-            return intro_contenu.decode('utf-8')
-
-    def get_conclusion(self, sha=None):
-        """
-        Get the conclusion content of a specific version
-        :param sha: version, if `None`, use draft one
-        :return: the conclusion (as a string)
-        """
-        # find hash code
-        if sha is None:
-            sha = self.sha_draft
-        repo = Repo(self.get_path())
-
-        manifest = get_blob(repo.commit(sha).tree, "manifest.json")
-        content_version = json_reader.loads(manifest)
-        if "introduction" in content_version:
-            path_content_ccl = content_version["conclusion"]
-
-        if path_content_ccl:
-            return get_blob(repo.commit(sha).tree, path_content_ccl)
-
-    def get_conclusion_online(self):
-        """
-        Get conclusion content of the public version
-        :return: the conclusion (as a string)
-        """
-        if self.is_online():
-            conclusion = open(
-                os.path.join(
-                    self.get_prod_path(),
-                    self.conclusion +
-                    '.html'),
-                "r")
-            conlusion_content = conclusion.read()
-            conclusion.close()
-
-            return conlusion_content.decode('utf-8')
-
-    def delete_entity_and_tree(self):
-        """
-        Delete the entities and their filesystem counterparts
-        """
-        shutil.rmtree(self.get_path(), 0)
-        Validation.objects.filter(tutorial=self).delete()
-
-        if self.gallery is not None:
-            self.gallery.delete()
-        if self.is_online():
-            shutil.rmtree(self.get_prod_path())
-        self.delete()
-        # TODO: should use the "git" version of `delete()` !!!
+        versioned.is_beta = self.is_beta(versioned.current_version)
+        versioned.is_validation = self.is_validation(versioned.current_version)
+        versioned.is_public = self.is_public(versioned.current_version)
 
     def save(self, *args, **kwargs):
         self.slug = slugify(self.title)
+        # TODO ensure unique slug here !!
 
         super(PublishableContent, self).save(*args, **kwargs)
 
@@ -678,6 +859,19 @@ class PublishableContent(Container):
         """
         return os.path.isfile(os.path.join(self.get_prod_path(), self.slug + ".epub"))
 
+    def delete_entity_and_tree(self):
+        """
+        Delete the entities and their filesystem counterparts
+        """
+        shutil.rmtree(self.get_repo_path(), False)
+        Validation.objects.filter(tutorial=self).delete()
+
+        if self.gallery is not None:
+            self.gallery.delete()
+        if self.in_public():
+            shutil.rmtree(self.get_prod_path())
+        self.delete()
+
 
 class ContentReaction(Comment):
     """
@@ -717,143 +911,6 @@ class ContentRead(models.Model):
 
     def __unicode__(self):
         return u'<Tutoriel "{0}" lu par {1}, #{2}>'.format(self.content,  self.user, self.note.pk)
-
-
-class Extract(models.Model):
-    """
-    A content extract from a Container.
-
-    It has a title, a position in the parent container and a text.
-    """
-    class Meta:
-        verbose_name = 'Extrait'
-        verbose_name_plural = 'Extraits'
-
-    # TODO: clear all database related information ?
-
-    title = models.CharField('Titre', max_length=80)
-    container = models.ForeignKey(Container, verbose_name='Chapitre parent', db_index=True)
-    position_in_container = models.IntegerField('Position dans le parent', db_index=True)
-
-    text = models.CharField(
-        'chemin relatif du texte',
-        blank=True,
-        null=True,
-        max_length=200)
-
-    def __unicode__(self):
-        return u'<extrait \'{0}\'>'.format(self.title)
-
-    def get_absolute_url(self):
-        """
-        :return: the url to access the tutorial offline
-        """
-        return '{0}#{1}-{2}'.format(
-            self.container.get_absolute_url(),
-            self.position_in_container,
-            slugify(self.title)
-        )
-
-    def get_absolute_url_online(self):
-        """
-        :return: the url to access the tutorial when online
-        """
-        return '{0}#{1}-{2}'.format(
-            self.container.get_absolute_url_online(),
-            self.position_in_container,
-            slugify(self.title)
-        )
-
-    def get_absolute_url_beta(self):
-        """
-        :return: the url to access the tutorial when in beta
-        """
-        return '{0}#{1}-{2}'.format(
-            self.container.get_absolute_url_beta(),
-            self.position_in_container,
-            slugify(self.title)
-        )
-
-    def get_phy_slug(self):
-        """
-        :return: the physical slug
-        """
-        return str(self.pk) + '_' + slugify(self.title)
-
-    def get_path(self, relative=False):
-        """
-        Get the physical path to the draft version of the extract.
-        :param relative: if `True`, the path will be relative, absolute otherwise.
-        :return: physical path
-        """
-        return os.path.join(self.container.get_path(relative=relative), self.get_phy_slug()) + '.md'
-        # TODO: versionning ?
-
-    def get_prod_path(self, sha=None):
-        """
-        Get the physical path to the public version of a specific version of the extract.
-        :param sha: version of the content, if `None`, `sha_public` is used
-        :return: physical path
-        """
-        return os.path.join(self.container.get_prod_path(sha), self.get_phy_slug()) + '.md.html'
-
-    def get_text(self, sha=None):
-
-        if self.container.tutorial:
-            tutorial = self.container.tutorial
-        else:
-            tutorial = self.container.part.tutorial
-        repo = Repo(tutorial.get_path())
-
-        # find hash code
-        if sha is None:
-            sha = tutorial.sha_draft
-
-        manifest = get_blob(repo.commit(sha).tree, "manifest.json")
-        tutorial_version = json_reader.loads(manifest)
-        if "parts" in tutorial_version:
-            for part in tutorial_version["parts"]:
-                if "chapters" in part:
-                    for chapter in part["chapters"]:
-                        if "extracts" in chapter:
-                            for extract in chapter["extracts"]:
-                                if extract["pk"] == self.pk:
-                                    path_ext = extract["text"]
-                                    break
-        if "chapter" in tutorial_version:
-            chapter = tutorial_version["chapter"]
-            if "extracts" in chapter:
-                for extract in chapter["extracts"]:
-                    if extract["pk"] == self.pk:
-                        path_ext = extract["text"]
-                        break
-
-        if path_ext:
-            return get_blob(repo.commit(sha).tree, path_ext)
-        else:
-            return None
-
-    def get_text_online(self):
-
-        if self.container.tutorial:
-            path = os.path.join(
-                self.container.tutorial.get_prod_path(),
-                self.text +
-                '.html')
-        else:
-            path = os.path.join(
-                self.container.part.tutorial.get_prod_path(),
-                self.text +
-                '.html')
-
-        if os.path.isfile(path):
-            text = open(path, "r")
-            text_contenu = text.read()
-            text.close()
-
-            return text_contenu.decode('utf-8')
-        else:
-            return None
 
 
 class Validation(models.Model):
