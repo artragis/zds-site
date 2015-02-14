@@ -20,6 +20,7 @@ from django.core.urlresolvers import reverse
 from django.db import models
 from datetime import datetime
 from git.repo import Repo
+from git import Actor
 from django.core.exceptions import PermissionDenied
 
 from zds.gallery.models import Image, Gallery
@@ -29,7 +30,6 @@ from zds.utils.tutorials import get_blob
 from zds.utils.tutorialv2 import export_content
 from zds.settings import ZDS_APP
 from zds.utils.models import HelpWriting
-
 from uuslug import uuslug
 
 
@@ -239,6 +239,7 @@ class Container:
                 child.update_children()
             elif isinstance(child, Extract):
                 child.text = child.get_path(relative=True)
+        # TODO : does this function should also rewrite `slug_pool` ?
 
     def get_path(self, relative=False):
         """
@@ -359,7 +360,9 @@ class Container:
 
         if commit_message == '':
             commit_message = u'Mise à jour de « ' + self.title + u' »'
-        cm = repo.index.commit(commit_message)
+        cm = repo.index.commit(commit_message, **get_commit_author())
+
+        self.top_container().sha_draft = cm.hexsha
 
         return cm.hexsha
 
@@ -404,7 +407,9 @@ class Container:
 
         if commit_message == '':
             commit_message = u'Création du conteneur « ' + title + u' »'
-        cm = repo.index.commit(commit_message)
+        cm = repo.index.commit(commit_message, **get_commit_author())
+
+        self.top_container().sha_draft = cm.hexsha
 
         return cm.hexsha
 
@@ -438,7 +443,9 @@ class Container:
 
         if commit_message == '':
             commit_message = u'Création de l\'extrait « ' + title + u' »'
-        cm = repo.index.commit(commit_message)
+        cm = repo.index.commit(commit_message, **get_commit_author())
+
+        self.top_container().sha_draft = cm.hexsha
 
         return cm.hexsha
 
@@ -464,7 +471,9 @@ class Container:
 
         if commit_message == '':
             commit_message = u'Suppression du conteneur « {} »'.format(self.title)
-        cm = repo.index.commit(commit_message)
+        cm = repo.index.commit(commit_message, **get_commit_author())
+
+        self.top_container().sha_draft = cm.hexsha
 
         return cm.hexsha
 
@@ -602,7 +611,9 @@ class Extract:
         if commit_message == '':
             commit_message = u'Modification de l\'extrait « {} », situé dans le conteneur « {} »'\
                 .format(self.title, self.container.title)
-        cm = repo.index.commit(commit_message)
+        cm = repo.index.commit(commit_message, **get_commit_author())
+
+        self.container.top_container().sha_draft = cm.hexsha
 
         return cm.hexsha
 
@@ -628,7 +639,9 @@ class Extract:
 
         if commit_message == '':
             commit_message = u'Suppression de l\'extrait « {} »'.format(self.title)
-        cm = repo.index.commit(commit_message)
+        cm = repo.index.commit(commit_message, **get_commit_author())
+
+        self.container.top_container().sha_draft = cm.hexsha
 
         return cm.hexsha
 
@@ -649,8 +662,6 @@ class VersionedContent(Container):
     description = ''
     type = ''
     licence = None
-
-    slug_pool = {}
 
     # Metadata from DB :
     pk = 0
@@ -771,6 +782,47 @@ class VersionedContent(Container):
         return self.repo_update(title, introduction, conclusion, commit_message)
 
 
+def get_content_from_json(json, sha):
+    """
+    Transform the JSON formated data into `VersionedContent`
+    :param json: JSON data from a `manifest.json` file
+    :param sha: version
+    :return: a `VersionedContent` with all the information retrieved from JSON
+    """
+    # TODO: should definitely be static
+    # create and fill the container
+    versioned = VersionedContent(sha, 'TUTORIAL', json['title'], json['slug'])
+
+    if 'version' in json and json['version'] == 2:
+        # fill metadata :
+        if 'description' in json:
+            versioned.description = json['description']
+
+        if 'type' in json:
+            if json['type'] == 'ARTICLE' or json['type'] == 'TUTORIAL':
+                versioned.type = json['type']
+
+        if 'licence' in json:
+            versioned.licence = Licence.objects.filter(code=json['licence']).first()
+        else:
+            versioned.licence = \
+                Licence.objects.filter(pk=settings.ZDS_APP['content']['default_license_pk']).first()
+
+        if 'introduction' in json:
+            versioned.introduction = json['introduction']
+        if 'conclusion' in json:
+            versioned.conclusion = json['conclusion']
+
+        # then, fill container with children
+        fill_containers_from_json(json, versioned)
+
+    else:
+        raise Exception('Importation of old version is not yet supported')
+        # TODO so here we can support old version !!
+
+    return versioned
+
+
 def fill_containers_from_json(json_sub, parent):
     """
     Function which call itself to fill container
@@ -856,7 +908,7 @@ def init_new_repo(db_object, introduction_text, conclusion_text, commit_message=
     if commit_message == '':
         commit_message = u'Création du contenu'
     repo.index.add(['manifest.json', introduction, conclusion])
-    cm = repo.index.commit(commit_message)
+    cm = repo.index.commit(commit_message, **get_commit_author())
 
     # update sha:
     db_object.sha_draft = cm.hexsha
@@ -870,6 +922,18 @@ def init_new_repo(db_object, introduction_text, conclusion_text, commit_message=
     versioned_content.repository = repo
 
     return versioned_content
+
+
+def get_commit_author():
+    """
+    :return: correctly formatted commit author for `repo.index.commit()`
+    """
+    user = get_current_user()
+    aut_user = str(user.pk)
+    aut_email = str(user.email)
+    if aut_email is None or aut_email.strip() == "":
+        aut_email = "inconnu@{}".format(settings.ZDS_APP['site']['dns'])
+    return {'author': Actor(aut_user, aut_email),  'committer': Actor(aut_user, aut_email)}
 
 
 class PublishableContent(models.Model):
@@ -1046,43 +1110,13 @@ class PublishableContent(models.Model):
                 sha = self.sha_draft
             else:
                 sha = self.sha_public
+
         path = self.get_repo_path()
         repo = Repo(path)
         data = get_blob(repo.commit(sha).tree, 'manifest.json')
         json = json_reader.loads(data)
-
-        # create and fill the container
-        versioned = VersionedContent(sha, self.type, json['title'], json['slug'])
-        if 'version' in json and json['version'] == 2:
-
-            # fill metadata :
-            if 'description' in json:
-                versioned.description = json['description']
-
-            if 'type' in json:
-                if json['type'] == 'ARTICLE' or json['type'] == 'TUTORIAL':
-                    versioned.type = json['type']
-            else:
-                versioned.type = self.type
-
-            if 'licence' in json:
-                versioned.licence = Licence.objects.filter(code=json['licence']).first()
-            else:
-                versioned.licence = \
-                    Licence.objects.filter(pk=settings.ZDS_APP['tutorial']['default_license_pk']).first()
-
-            if 'introduction' in json:
-                versioned.introduction = json['introduction']
-            if 'conclusion' in json:
-                versioned.conclusion = json['conclusion']
-
-            # then, fill container with children
-            fill_containers_from_json(json, versioned)
-            self.insert_data_in_versioned(versioned)
-
-        else:
-            raise Exception('Importation of old version is not yet supported')
-            # TODO so here we can support old version !!
+        versioned = get_content_from_json(json, sha)
+        self.insert_data_in_versioned(versioned)
 
         return versioned
 
