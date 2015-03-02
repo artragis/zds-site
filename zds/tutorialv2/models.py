@@ -182,7 +182,7 @@ class Container:
         :return: True if this container accept child container, false otherwise
         """
         if not self.has_extracts():
-            if self.get_tree_depth() < ZDS_APP['content']['max_tree_depth']-1:
+            if self.get_tree_depth() < ZDS_APP['content']['max_tree_depth'] - 1:
                 if not self.top_container().is_article:
                     return True
         return False
@@ -705,7 +705,9 @@ class VersionedContent(Container):
         Container.__init__(self, title, slug)
         self.current_version = current_version
         self.type = _type
-        self.repository = Repo(self.get_path())
+
+        if os.path.exists(self.get_path()):
+            self.repository = Repo(self.get_path())
 
     def __unicode__(self):
         return self.title
@@ -884,7 +886,7 @@ def fill_containers_from_json(json_sub, parent):
                 new_extract.text = child['text']
                 parent.add_extract(new_extract, generate_slug=(slug != ''))
             else:
-                raise Exception('Unknown object type'+child['object'])
+                raise Exception('Unknown object type' + child['object'])
 
 
 def init_new_repo(db_object, introduction_text, conclusion_text, commit_message=''):
@@ -901,9 +903,12 @@ def init_new_repo(db_object, introduction_text, conclusion_text, commit_message=
 
     # create directory
     path = db_object.get_repo_path()
-    print(path)
     if not os.path.isdir(path):
         os.makedirs(path, mode=0o777)
+
+    # init repo:
+    Repo.init(path, bare=False)
+    repo = Repo(path)
 
     introduction = 'introduction.md'
     conclusion = 'conclusion.md'
@@ -917,10 +922,6 @@ def init_new_repo(db_object, introduction_text, conclusion_text, commit_message=
     versioned_content.description = db_object.description
     versioned_content.introduction = introduction
     versioned_content.conclusion = conclusion
-
-    # init repo:
-    Repo.init(path, bare=False)
-    repo = Repo(path)
 
     # fill intro/conclusion:
     f = open(os.path.join(path, introduction), "w")
@@ -961,7 +962,7 @@ def get_commit_author():
     aut_email = str(user.email)
     if aut_email is None or aut_email.strip() == "":
         aut_email = "inconnu@{}".format(settings.ZDS_APP['site']['dns'])
-    return {'author': Actor(aut_user, aut_email),  'committer': Actor(aut_user, aut_email)}
+    return {'author': Actor(aut_user, aut_email), 'committer': Actor(aut_user, aut_email)}
 
 
 class PublishableContent(models.Model):
@@ -1154,16 +1155,21 @@ class PublishableContent(models.Model):
         :param versioned: the VersionedContent to fill
         """
 
+        attrs = [
+            'pk', 'authors', 'authors', 'subcategory', 'image', 'creation_date', 'pubdate', 'update_date', 'source',
+            'sha_draft', 'sha_beta', 'sha_validation', 'sha_public'
+        ]
+
         fns = [
-            'pk',
             'have_markdown', 'have_html', 'have_pdf', 'have_epub', 'in_beta', 'in_validation', 'in_public',
-            'authors', 'subcategory', 'image', 'creation_date', 'pubdate', 'update_date', 'source', 'sha_draft',
-            'sha_beta', 'sha_validation', 'sha_public', 'is_article', 'is_tutorial'
+            'is_article', 'is_tutorial'
         ]
 
         # load functions and attributs in `versioned`
+        for attr in attrs:
+            setattr(versioned, attr, getattr(self, attr))
         for fn in fns:
-            setattr(versioned, fn, getattr(self, fn))
+            setattr(versioned, fn, getattr(self, fn)())
 
         # general information
         versioned.is_beta = self.is_beta(versioned.current_version)
@@ -1258,28 +1264,28 @@ class PublishableContent(models.Model):
         Check if the markdown zip archive is available
         :return: `True` if available, `False` otherwise
         """
-        return os.path.isfile(os.path.join(self.get_prod_path(), self.slug + ".md"))
+        return os.path.isfile(os.path.join(self.get_repo_path(), self.slug + ".md"))
 
     def have_html(self):
         """
         Check if the html version of the content is available
         :return: `True` if available, `False` otherwise
         """
-        return os.path.isfile(os.path.join(self.get_prod_path(), self.slug + ".html"))
+        return os.path.isfile(os.path.join(self.get_repo_path(), self.slug + ".html"))
 
     def have_pdf(self):
         """
         Check if the pdf version of the content is available
         :return: `True` if available, `False` otherwise
         """
-        return os.path.isfile(os.path.join(self.get_prod_path(), self.slug + ".pdf"))
+        return os.path.isfile(os.path.join(self.get_repo_path(), self.slug + ".pdf"))
 
     def have_epub(self):
         """
         Check if the standard epub version of the content is available
         :return: `True` if available, `False` otherwise
         """
-        return os.path.isfile(os.path.join(self.get_prod_path(), self.slug + ".epub"))
+        return os.path.isfile(os.path.join(self.get_repo_path(), self.slug + ".epub"))
 
     def repo_delete(self):
         """
@@ -1331,7 +1337,7 @@ class ContentRead(models.Model):
     user = models.ForeignKey(User, related_name='content_notes_read', db_index=True)
 
     def __unicode__(self):
-        return u'<Tutoriel "{0}" lu par {1}, #{2}>'.format(self.content,  self.user, self.note.pk)
+        return u'<Tutoriel "{0}" lu par {1}, #{2}>'.format(self.content, self.user, self.note.pk)
 
 
 class Validation(models.Model):
