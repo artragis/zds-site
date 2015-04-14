@@ -6,7 +6,6 @@ except ImportError:
     print("The old stack is no more available on your zestedesavoir copy")
     exit()
 
-
 from zds.tutorialv2.models import PublishableContent, Extract, Container  # , VersionedContent
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -164,13 +163,12 @@ def migrate_big_tuto():
                     current_extract = Extract(extract.title, extract.text[:-3].split("/")[-1])
                     current_extract.text = extract.text
                     current_chapter.add_extract(current_extract)
-                    
-        
+
         versioned.dump_json()
 
         exported.sha_draft = versioned.commit_changes(u"Migration version 2")
         exported.save()
-        
+
         # todo: handle publication, notes etc.
 
 
