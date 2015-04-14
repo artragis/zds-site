@@ -685,6 +685,8 @@ class EditContainer(LoggedWithReadWriteHability, SingleContentFormViewMixin):
 
     def get_context_data(self, **kwargs):
         context = super(EditContainer, self).get_context_data(**kwargs)
+        form = kwargs.pop('form', None)
+        context['container'] = form.initial['container']
 
         return context
 
@@ -696,6 +698,7 @@ class EditContainer(LoggedWithReadWriteHability, SingleContentFormViewMixin):
         initial['title'] = container.title
         initial['introduction'] = container.get_introduction()
         initial['conclusion'] = container.get_conclusion()
+        initial['container'] = container
 
         return initial
 
@@ -753,7 +756,8 @@ class EditExtract(LoggedWithReadWriteHability, SingleContentFormViewMixin):
 
     def get_context_data(self, **kwargs):
         context = super(EditExtract, self).get_context_data(**kwargs)
-        context['extract'] = search_extract_or_404(self.versioned_object, self.kwargs)
+        form = kwargs.pop('form', None)
+        context['extract'] = form.initial['extract']
 
         return context
 
@@ -764,6 +768,7 @@ class EditExtract(LoggedWithReadWriteHability, SingleContentFormViewMixin):
 
         initial['title'] = extract.title
         initial['text'] = extract.get_text()
+        initial['extract'] = extract
 
         return initial
 
