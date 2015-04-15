@@ -6,7 +6,7 @@ from zds.tutorialv2.views import ListContent, DisplayContent, CreateContent, Edi
     CreateContainer, DisplayContainer, EditContainer, CreateExtract, EditExtract, DeleteContainerOrExtract, \
     ManageBetaContent, DisplayHistory, DisplayDiff, ValidationListView, ActivateJSFiddleInContent, \
     AskValidationForContent, ReserveValidation, HistoryOfValidationDisplay, MoveChild, DownloadContent, \
-    UpdateContentWithArchive, CreateContentFromArchive
+    UpdateContentWithArchive, CreateContentFromArchive, RedirectContentSEO
 
 urlpatterns = patterns('',
                        url(r'^$', ListContent.as_view(), name='index'),
@@ -103,5 +103,8 @@ urlpatterns = patterns('',
                        url(r'^valider/proposer/$', AskValidationForContent.as_view(), name="ask_validation"),
                        url(r'^valider/reserver/(?P<pk>\d+)/$', ReserveValidation.as_view(), name="reserve_validation"),
                        url(r'^validation/historique/(?P<pk>\d+)/$', HistoryOfValidationDisplay.as_view(),
-                           name="validation_history")
+                           name="validation_history"),
+                       url(r'^(?P<pk>\d+)/(?P<slug>.+)/(?P<p2>\d+)/'
+                           r'(?P<parent_container_slug>.+)/(?P<p3>\d+)/(?P<container_slug>.+)/$',
+                           RedirectContentSEO.as_view(), name="redirect-old-tuto")
                        )
