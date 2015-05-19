@@ -98,7 +98,7 @@ class AskValidationForContent(LoggedWithReadWriteHability, SingleContentFormView
 
         # test if admin or author
         """"if not self.request.user in self.object.authors.all() \
-                and not self.request.user.has_perm('tutorial.change_tutorial'):
+                and not self.request.user.has_perm('tutorialv2.change_tutorialv2'):
             raise PermissionDenied"""
 
         old_validation = Validation.objects.filter(
@@ -183,7 +183,7 @@ class CancelValidation(LoginRequiredMixin, ModalFormView):
         if validation.status not in ['PENDING', 'PENDING_V']:
             raise PermissionDenied  # cannot cancel a validation that is already accepted or rejected
 
-        if user not in validation.content.authors.all() and not user.has_perms('tutorial.change_tutorial'):
+        if user not in validation.content.authors.all() and not user.has_perm('tutorialv2.change_tutorialv2'):
             raise PermissionDenied
 
         versioned = validation.content.load_version(sha=validation.version)
