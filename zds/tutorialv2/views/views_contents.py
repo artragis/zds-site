@@ -1574,7 +1574,7 @@ class ContentOfAuthor(ZdSPagingListView):
         context['filters'] = []
         context['sort'] = self.sort.lower()
         context['filter'] = self.filter.lower()
-        context['is_staff'] = self.request.user.has_perm('tutorial.change_tutorial')
+        context['is_staff'] = self.request.user.has_perm('tutorialv2.change_tutorialv2')
         context['usr'] = self.user
         for sort in self.sorts.keys():
             context['sorts'].append({'key': sort, 'text': self.sorts[sort][1]})
