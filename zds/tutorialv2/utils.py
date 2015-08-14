@@ -617,6 +617,10 @@ def publish_content(db_object, versioned, is_major_update=True):
     else:
         public_version = PublishedContent()
 
+    # change sha1 version
+    db_object.sha_public = versioned.current_version
+    db_object.save()
+
     # make the new public version
     public_version.content_public_slug = versioned.slug
     public_version.content_type = versioned.type
