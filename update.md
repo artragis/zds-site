@@ -322,3 +322,4 @@ Il vous faut *absolument* faire une sauvegarde de secours de la base de données
 
  - Par défaut la pagination est mise à 50 éléments, mais nous affichons 2 ou 3 colonnes selon les largeurs d'écran. 
    Un nombre de 42 ou 54 (donc divisible par 2 ET 3) est envisageable. Pour le changez, il faut modifier la variable ZDS_APP['content']['content_per_page'] dans le settings.py
+ - À cause de changement dans les css, en particulié dans les pages listants les tutoriels et les articles, il vous faut builder le front.
