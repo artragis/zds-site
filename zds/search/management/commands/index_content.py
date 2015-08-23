@@ -99,4 +99,4 @@ def print_error():
     exc_type, exc_value, exc_traceback = sys.exc_info()
     to_display = repr(traceback.format_exception(exc_type, exc_value, exc_traceback))
     sys.stderr = to_display
-    print to_display
+    sys.stdout.write(to_display)
