@@ -3,7 +3,7 @@
 
 {% if user.is_authenticated and user not in content.authors.all %}
 
-<a href="#warn-typo-modal" class="open-modal btn btn-grey ico-after edit blue">
+<a href="#warn-typo-modal" class="open-modal btn btn-grey ico-after edit blue btn-center">
     {% trans "Signaler une faute dans" %}
     {% if not container %}
         {% if content.type == 'ARTICLE' %}
