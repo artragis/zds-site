@@ -165,3 +165,7 @@ def alerts(request):
 def custom_error_500(request):
     """Custom view for 500 errors"""
     return render(request, '500.html')
+
+
+def parcours(request):
+    return render(request, 'pages/parcours.html')
