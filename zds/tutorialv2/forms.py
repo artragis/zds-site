@@ -670,7 +670,7 @@ class AcceptValidationForm(forms.Form):
 
     def clean(self):
         cleaned_data = super(AcceptValidationForm, self).clean()
-        if "pubdate" not in cleaned_data:
+        if "pubdate" not in cleaned_data or not cleaned_data["pubdate"]:
             cleaned_data['pubdate'] = datetime.now()
         else:
             cleaned_data['pubdate'] = max(datetime.now(), cleaned_data["pubdate"])
