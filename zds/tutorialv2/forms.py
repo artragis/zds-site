@@ -1,4 +1,5 @@
 # coding: utf-8
+from datetime import datetime
 from django import forms
 from django.conf import settings
 
@@ -613,7 +614,13 @@ class AcceptValidationForm(forms.Form):
         required=False,
         initial=True
     )
-
+    pubdate = forms.DateField(
+        label=_(u'Date de publication (Laissez vide pour maintenant.)'),
+        widget=forms.DateInput(attrs={
+            "class": "date_picker_field"
+        }),
+        required=False
+    )
     source = forms.CharField(
         label='',
         required=False,
@@ -655,6 +662,7 @@ class AcceptValidationForm(forms.Form):
 
         self.helper.layout = Layout(
             CommonLayoutModalText(),
+            Field('pubdate'),
             Field('source'),
             Field('is_major'),
             StrictButton(_(u'Publier'), type='submit')
@@ -662,6 +670,10 @@ class AcceptValidationForm(forms.Form):
 
     def clean(self):
         cleaned_data = super(AcceptValidationForm, self).clean()
+        if "pubdate" not in cleaned_data:
+            cleaned_data['pubdate'] = datetime.now()
+        else:
+            cleaned_data['pubdate'] = max(datetime.now(), cleaned_data["pubdate"])
 
         text = cleaned_data.get('text')
 

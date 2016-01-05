@@ -1,6 +1,9 @@
 # coding: utf-8
 
 from datetime import datetime
+
+from model_utils.managers import QueryManager
+
 try:
     import ujson as json_reader
 except ImportError:
@@ -555,6 +558,7 @@ class PublishedContent(models.Model):
     authors = models.ManyToManyField(User, verbose_name='Auteurs', db_index=True)
 
     objects = PublishedContentManager()
+    published = QueryManager(publication_date__le=datetime.now())
     versioned_model = None
 
     # sizes contain a python dict (as a string in database) with all information about file sizes

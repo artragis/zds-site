@@ -403,6 +403,8 @@ class AcceptValidation(LoginRequiredMixin, PermissionRequiredMixin, ModalFormVie
         is_update = db_object.sha_public
         try:
             published = publish_content(db_object, versioned, is_major_update=form.cleaned_data['is_major'])
+            published.publication_date = form.cleaned_data["pubdate"]
+            published.save()
         except FailureDuringPublication as e:
             messages.error(self.request, e.message)
         else:
