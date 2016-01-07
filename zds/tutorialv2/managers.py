@@ -98,3 +98,6 @@ class PublishableContentManager(models.Manager):
             content.public_version.content = content
             published.append(content.public_version)
         return published
+
+    def published(self):
+        return self.filter(publication_date__lte=datetime.now())
