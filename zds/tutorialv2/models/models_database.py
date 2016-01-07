@@ -2,8 +2,6 @@
 
 from datetime import datetime
 
-from model_utils.managers import QueryManager
-
 try:
     import ujson as json_reader
 except ImportError:
