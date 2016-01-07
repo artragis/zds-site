@@ -558,7 +558,6 @@ class PublishedContent(models.Model):
     authors = models.ManyToManyField(User, verbose_name='Auteurs', db_index=True)
 
     objects = PublishedContentManager()
-    published = QueryManager(publication_date__lte=datetime.now())
     versioned_model = None
 
     # sizes contain a python dict (as a string in database) with all information about file sizes
@@ -838,6 +837,11 @@ class ContentReaction(Comment):
         """
         page = int(ceil(float(self.position) / settings.ZDS_APP["content"]["notes_per_page"]))
         return '{0}?page={1}#p{2}'.format(self.related_content.get_absolute_url_online(), page, self.pk)
+
+    def __getattr__(self, item):
+        if item == "published":
+            return QueryManager(publication_date__lte=datetime.now())
+        return
 
 
 class ContentRead(models.Model):
