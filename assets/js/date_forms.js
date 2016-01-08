@@ -1,5 +1,5 @@
 (function($, undefined) {
     "use strict";
 
-    $(".date_picker_field").pickaday();
+    $(".date_picker_field").pikaday();
 })(jQuery);
