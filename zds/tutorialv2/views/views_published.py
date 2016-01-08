@@ -80,7 +80,7 @@ class DisplayOnlineContent(SingleOnlineContentDetailViewMixin):
             # fetch all articles in order to find the previous and the next one
             all_articles = \
                 [a for a in PublishedContent.objects.published()
-                    .filter(content_type="ARTICLE", must_redirect=False)
+                    .filter(content_type="ARTICLE")
                     .order_by('publication_date')
                     .all()]
             articles_count = len(all_articles)
@@ -283,7 +283,7 @@ class ListOnlineContents(ContentTypeMixin, ZdSPagingListView):
             r"`tutorialv2_publishablecontent`.`id`"
         )
         queryset = PublishedContent.objects.published()\
-            .filter(content_type=self.current_content_type, must_redirect=False)
+            .filter(content_type=self.current_content_type)
 
         # prefetch:
         queryset = queryset\
