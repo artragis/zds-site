@@ -23,7 +23,7 @@ var sourceDir = "assets",
     stylesFiles = ["main.scss"],
     vendorsCSS = ["node_modules/normalize.css/normalize.css", "node_modules/pikaday/css/pickaday.css", "node_modules/pikaday/css/theme.css"],
     vendorsJS = ["node_modules/jquery/dist/jquery.js", "node_modules/cookies-eu-banner/dist/cookies-eu-banner.js",
-        "node_modules/pikaday/pikaday.js", "node_modules/pikaday/plugins/pikaday.jquery.js"],
+        "node_modulesgu/pikaday/pikaday.js", "node_modules/pikaday/plugins/pikaday.jquery.js"],
     imageminConfig = { optimizationLevel: 3, progressive: true, interlaced: true };
 
 /**
@@ -66,7 +66,7 @@ gulp.task("vendors-js", function() {
  * Copy, concat and minify vendors files
  */
 gulp.task("vendors", ["vendors-js", "vendors-css"], function() {
-  return gulp.src(path.join(sourceDir, scriptsDir, vendorsDir, "*.js"))
+  return gulp.src(vendorsJS)
     .pipe($.sourcemaps.init())
       .pipe($.concat("vendors.js"))
       .pipe($.uglify().on('error', $.notify.onError({
