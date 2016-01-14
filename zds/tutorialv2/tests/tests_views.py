@@ -5301,7 +5301,7 @@ class PublishedContentTests(TestCase):
                 'text': "one text",
                 'is_major': False,  # minor modification (just the title)
                 'source': u'',
-                'pubdate': tomorrow.strftime("%Y-%m-%d")
+                'pubdate': tomorrow.strftime("%Y-%m-%d %h:%M:%s")
             },
             follow=False)
         self.assertEqual(result.status_code, 302)
