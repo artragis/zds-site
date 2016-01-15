@@ -5308,18 +5308,6 @@ class PublishedContentTests(TestCase):
         result = self.client.get(reverse("tutorial:list"))
         self.assertNotIn(tuto.title, result.content)
 
-    def test_download_size(self):
-        """
-        Test the size of content to download.
-        """
-        sizes = self.published.sizes
-        for type_ in ALLOWED_TYPES:
-            if self.published.have_type(type_):
-                self.assertEqual(sizes[type_],
-                                 os.path.getsize(os.path.join(
-                                     self.published.get_extra_contents_directory(),
-                                     self.published.content_public_slug + '.' + type_)))
-
     def tearDown(self):
 
         if os.path.isdir(settings.ZDS_APP['content']['repo_private_path']):
