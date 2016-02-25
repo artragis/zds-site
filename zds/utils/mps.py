@@ -85,8 +85,8 @@ def send_message_mp(
     # send email
     if send_by_mail:
         if direct:
-            subject = u"{} : {}".format(settings.ZDS_APP['site']['litteral_name'], n_topic.title)
-            from_email = u"{} <{}>".format(settings.ZDS_APP['site']['litteral_name'],
+            subject = "{} : {}".format(settings.ZDS_APP['site']['litteral_name'], n_topic.title)
+            from_email = "{} <{}>".format(settings.ZDS_APP['site']['litteral_name'],
                                            settings.ZDS_APP['site']['email_noreply'])
             for part in n_topic.participants.all():
                 message_html = render_to_string('email/direct.html', {'msg': emarkdown(text)})
@@ -127,11 +127,11 @@ def send_email(author, n_topic, to, pos):
             message_html = render_to_string('email/mp/new.html', context)
             message_txt = render_to_string('email/mp/new.txt', context)
 
-            subject = u"{} - {} : {}".format(settings.ZDS_APP['site']['litteral_name'],
-                                             _(u'Message Privé'),
+            subject = "{} - {} : {}".format(settings.ZDS_APP['site']['litteral_name'],
+                                             _('Message Privé'),
                                              n_topic.title)
 
-            from_email = u"{} <{}>".format(settings.ZDS_APP['site']['litteral_name'],
+            from_email = "{} <{}>".format(settings.ZDS_APP['site']['litteral_name'],
                                            settings.ZDS_APP['site']['email_noreply'])
 
             msg = EmailMultiAlternatives(subject, message_txt, from_email, [to.email])

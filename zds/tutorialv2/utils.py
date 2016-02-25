@@ -3,8 +3,8 @@ import os
 import shutil
 from collections import OrderedDict
 from datetime import datetime
-from urllib import urlretrieve
-from urlparse import urlparse
+from urllib.request import urlretrieve
+from urllib.parse import urlparse
 
 import cairosvg
 from PIL import Image as ImagePIL
@@ -29,7 +29,7 @@ def all_is_string_appart_from_children(dict_representation):
     :return:
     :rtype: bool
     """
-    return all([isinstance(value, basestring) for key, value in dict_representation.items() if key != "children"])
+    return all([isinstance(value, str) for key, value in list(dict_representation.items()) if key != "children"])
 
 
 def search_container_or_404(base_content, kwargs_array):
@@ -44,7 +44,7 @@ def search_container_or_404(base_content, kwargs_array):
 
     from zds.tutorialv2.models.models_versioned import Container
 
-    if isinstance(kwargs_array, basestring):
+    if isinstance(kwargs_array, str):
         dic = {}
         dic["parent_container_slug"] = kwargs_array.split("/")[0]
         if len(kwargs_array.split("/")) >= 2:
@@ -55,10 +55,10 @@ def search_container_or_404(base_content, kwargs_array):
             try:
                 container = base_content.children_dict[kwargs_array['parent_container_slug']]
             except KeyError:
-                raise Http404(_(u"Aucun conteneur trouvé."))
+                raise Http404(_("Aucun conteneur trouvé."))
             else:
                 if not isinstance(container, Container):
-                    raise Http404(_(u"Aucun conteneur trouvé."))
+                    raise Http404(_("Aucun conteneur trouvé."))
     else:
         container = base_content
 
@@ -67,15 +67,15 @@ def search_container_or_404(base_content, kwargs_array):
         try:
             container = container.children_dict[kwargs_array['container_slug']]
         except KeyError:
-            raise Http404(_(u"Aucun conteneur trouvé."))
+            raise Http404(_("Aucun conteneur trouvé."))
         else:
             if not isinstance(container, Container):
-                raise Http404(_(u"Aucun conteneur trouvé."))
+                raise Http404(_("Aucun conteneur trouvé."))
     elif container == base_content:
         # if we have no subcontainer, there is neither "container_slug" nor "parent_container_slug
         return base_content
     if container is None:
-        raise Http404(_(u"Aucun conteneur trouvé."))
+        raise Http404(_("Aucun conteneur trouvé."))
     return container
 
 
@@ -99,10 +99,10 @@ def search_extract_or_404(base_content, kwargs_array):
         try:
             extract = container.children_dict[kwargs_array['extract_slug']]
         except KeyError:
-            raise Http404(_(u"Aucun extrait trouvé."))
+            raise Http404(_("Aucun extrait trouvé."))
         else:
             if not isinstance(extract, Extract):
-                raise Http404(_(u"Aucun extrait trouvé."))
+                raise Http404(_("Aucun extrait trouvé."))
     return extract
 
 
@@ -463,12 +463,12 @@ def get_content_from_json(json, sha, slug_last_draft, public=False, max_title_le
         json["version"] = "2"
         if not all_is_string_appart_from_children(json):
             json['version'] = 2
-            raise BadManifestError(_(u"Le fichier manifest n'est pas bien formaté."))
+            raise BadManifestError(_("Le fichier manifest n'est pas bien formaté."))
         json['version'] = 2
         # create and fill the container
         if len(json['title']) > max_title_len:
             raise BadManifestError(
-                _(u"Le titre doit être une chaîne de caractères de moins de {} caractères.").format(max_title_len))
+                _("Le titre doit être une chaîne de caractères de moins de {} caractères.").format(max_title_len))
 
         # check that title gives correct slug
         slugify_raise_on_invalid(json['title'])
@@ -639,7 +639,7 @@ def slugify_raise_on_invalid(title, use_old_slugify=False):
     :rtype: str
     """
 
-    if not isinstance(title, basestring):
+    if not isinstance(title, str):
         raise InvalidSlugError('', source=title)
     if not use_old_slugify:
         slug = slugify(title)
@@ -668,7 +668,7 @@ def fill_containers_from_json(json_sub, parent):
         for child in json_sub['children']:
             if not all_is_string_appart_from_children(child):
                 raise BadManifestError(
-                    _(u"Le fichier manifest n'est pas bien formaté dans le conteneur " + str(json_sub['title'])))
+                    _("Le fichier manifest n'est pas bien formaté dans le conteneur " + str(json_sub['title'])))
             if child['object'] == 'container':
                 slug = ''
                 try:
@@ -705,7 +705,7 @@ def fill_containers_from_json(json_sub, parent):
                 except InvalidOperationError as e:
                     raise BadManifestError(e.message)
             else:
-                raise BadManifestError(_(u'Type d\'objet inconnu : « {} »').format(child['object']))
+                raise BadManifestError(_('Type d\'objet inconnu : « {} »').format(child['object']))
 
 
 def init_new_repo(db_object, introduction_text, conclusion_text, commit_message='', do_commit=True):
@@ -740,7 +740,7 @@ def init_new_repo(db_object, introduction_text, conclusion_text, commit_message=
 
     # perform changes:
     if commit_message == '':
-        commit_message = u'Création du contenu'
+        commit_message = 'Création du contenu'
 
     sha = versioned_content.repo_update(
         db_object.title, introduction_text, conclusion_text, commit_message=commit_message, do_commit=do_commit)
@@ -782,7 +782,7 @@ def get_commit_author():
         aut_email = None
 
     if aut_email is None or aut_email.strip() == "":
-        aut_email = _(u"inconnu@{}").format(settings.ZDS_APP['site']['dns'])
+        aut_email = _("inconnu@{}").format(settings.ZDS_APP['site']['dns'])
 
     return {'author': Actor(aut_user, aut_email), 'committer': Actor(aut_user, aut_email)}
 
@@ -899,7 +899,7 @@ def get_blob(tree, path):
 
 class BadArchiveError(Exception):
     """ The exception that is raised when a bad archive is sent """
-    message = u''
+    message = ''
 
     def __init__(self, reason):
         self.message = reason

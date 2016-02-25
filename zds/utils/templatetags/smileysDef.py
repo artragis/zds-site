@@ -17,7 +17,7 @@ SMILEYS_BASE = {
     "mechant.png": (":colere2:", ),
     "blink.gif": ("o_O", "O_o", ),
     "hihi.png": ("^^", ),
-    "siffle.png": (u":-°", u":°", ),
+    "siffle.png": (":-°", ":°", ),
     "ange.png": (":ange:", ),
     "angry.gif": (":colere:", ),
     "diable.png": (":diable:", ),
@@ -34,6 +34,6 @@ SMILEYS_BASE = {
 }
 
 smileys = {}
-for imageFile, symboles in SMILEYS_BASE.iteritems():
+for imageFile, symboles in SMILEYS_BASE.items():
     for symbole in symboles:
         smileys[symbole] = os.path.join(SMILEYS_BASE_URL, imageFile)
