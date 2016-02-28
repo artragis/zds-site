@@ -17,6 +17,10 @@ base.db
 /articles-data-test
 /contents-private-test
 /contents-public-test
+fixtures/tuto/article_v1.zip
+fixtures/tuto/article_v1/manifest2.json
+fixtures/tuto/balise_audio.zip
+fixtures/tuto/big_tuto_v1.zip
 
 /apache-solr
 
@@ -31,6 +35,7 @@ base.db
 /assets/scss/_sprite.scss
 /assets/scss/vendors
 /assets/js/vendors
+
 
 #############
 ## Python

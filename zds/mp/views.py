@@ -1,5 +1,3 @@
-# coding: utf-8
-
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -194,10 +192,10 @@ class PrivateTopicAddParticipant(SingleObjectMixin, RedirectView):
                 # send email
                 if participant.email_for_answer:
                     subject = "{} - {} : {}".format(settings.ZDS_APP['site']['litteral_name'],
-                                                     _('Message Privé'),
-                                                     self.object.title)
+                                                    _('Message Privé'),
+                                                    self.object.title)
                     from_email = "{} <{}>".format(settings.ZDS_APP['site']['litteral_name'],
-                                                   settings.ZDS_APP['site']['email_noreply'])
+                                                  settings.ZDS_APP['site']['email_noreply'])
                     context = {
                         'username': participant.user.username,
                         'url': settings.ZDS_APP['site']['url'] + self.object.get_absolute_url(),

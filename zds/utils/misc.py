@@ -1,4 +1,3 @@
-# coding: utf-8
 import hashlib
 
 THUMB_MAX_WIDTH = 80

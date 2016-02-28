@@ -1,5 +1,3 @@
-# coding: utf-8
-
 from django.conf import settings
 from django.db import models
 from zds.settings import ZDS_APP
@@ -59,7 +57,7 @@ class Category(models.Model):
                             "d'URL et sont donc interdits : notifications "
                             "resolution_alerte sujet sujets message messages")
 
-    def __unicode__(self):
+    def __str__(self):
         """Textual form of a category."""
         return self.title
 
@@ -110,7 +108,7 @@ class Forum(models.Model):
     slug = models.SlugField(max_length=80, unique=True)
     objects = ForumManager()
 
-    def __unicode__(self):
+    def __str__(self):
         return self.title
 
     def get_absolute_url(self):
@@ -214,7 +212,7 @@ class Topic(models.Model):
 
     objects = TopicManager()
 
-    def __unicode__(self):
+    def __str__(self):
         return self.title
 
     def get_absolute_url(self):
@@ -335,10 +333,13 @@ class Topic(models.Model):
                           .latest('post__position')
         if t_read:
             return t_read.post.pk, t_read.post.position
-        return list(Post.objects\
-            .filter(topic__pk=self.pk)\
-            .order_by('position')\
-            .values('pk', "position").first().values())
+        return list(Post.objects
+                    .filter(topic__pk=self.pk)
+                    .order_by('position')
+                    .values('pk', "position")
+                    .first()
+                    .values()
+                    )
 
     def resolve_first_post_url(self):
         """resolve the url that leads to this topic first post
@@ -459,7 +460,7 @@ class Post(Comment):
     is_useful = models.BooleanField('Est utile', default=False)
     objects = PostManager()
 
-    def __unicode__(self):
+    def __str__(self):
         return '<Post pour "{0}", #{1}>'.format(self.topic, self.pk)
 
     def get_absolute_url(self):
@@ -489,10 +490,10 @@ class TopicRead(models.Model):
     user = models.ForeignKey(User, related_name='topics_read', db_index=True)
     objects = TopicReadManager()
 
-    def __unicode__(self):
+    def __str__(self):
         return '<Sujet "{0}" lu par {1}, #{2}>'.format(self.topic,
-                                                        self.user,
-                                                        self.post.pk)
+                                                       self.user,
+                                                       self.post.pk)
 
 
 class TopicFollowed(models.Model):
@@ -509,9 +510,9 @@ class TopicFollowed(models.Model):
     user = models.ForeignKey(User, related_name='topics_followed', db_index=True)
     email = models.BooleanField('Notification par courriel', default=False, db_index=True)
 
-    def __unicode__(self):
+    def __str__(self):
         return '<Sujet "{0}" suivi par {1}>'.format(self.topic.title,
-                                                     self.user.username)
+                                                    self.user.username)
 
 
 def never_read(topic, user=None):

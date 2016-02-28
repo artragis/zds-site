@@ -20,6 +20,7 @@ easy-thumbnails==2.2
 CairoSVG==1.0.19
 beautifulsoup4==4.4.1
 django-recaptcha==1.0.4
+django-extensions==1.6.1
 
 # Api dependencies
 djangorestframework==3.3.2

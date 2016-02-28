@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from datetime import datetime
 from django.core.exceptions import PermissionDenied
 from django.contrib import messages

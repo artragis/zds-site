@@ -1,5 +1,3 @@
-# coding: utf-8
-
 from datetime import datetime
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
@@ -87,7 +85,7 @@ def send_message_mp(
         if direct:
             subject = "{} : {}".format(settings.ZDS_APP['site']['litteral_name'], n_topic.title)
             from_email = "{} <{}>".format(settings.ZDS_APP['site']['litteral_name'],
-                                           settings.ZDS_APP['site']['email_noreply'])
+                                          settings.ZDS_APP['site']['email_noreply'])
             for part in n_topic.participants.all():
                 message_html = render_to_string('email/direct.html', {'msg': emarkdown(text)})
                 message_txt = render_to_string('email/direct.txt', {'msg': text})
@@ -128,11 +126,11 @@ def send_email(author, n_topic, to, pos):
             message_txt = render_to_string('email/mp/new.txt', context)
 
             subject = "{} - {} : {}".format(settings.ZDS_APP['site']['litteral_name'],
-                                             _('Message Privé'),
-                                             n_topic.title)
+                                            _('Message Privé'),
+                                            n_topic.title)
 
             from_email = "{} <{}>".format(settings.ZDS_APP['site']['litteral_name'],
-                                           settings.ZDS_APP['site']['email_noreply'])
+                                          settings.ZDS_APP['site']['email_noreply'])
 
             msg = EmailMultiAlternatives(subject, message_txt, from_email, [to.email])
             msg.attach_alternative(message_html, "text/html")
