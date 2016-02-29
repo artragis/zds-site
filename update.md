@@ -470,3 +470,10 @@ REST_FRAMEWORK
 --------------
 
 Vérifier qu'on ne surcharge pas la variable `REST_FRAMEWORK` dans le `settings_prod.py`. Si c'est le cas l'adapter en fonction du `settings.py`.
+
+
+Actions à faire pour passer en python3
+======================================
+
+**ATTENTION** Nécessite un nouveau virtualenv
+- installer python3-dev et libmysqlclient-dev avec `apt-get install python3-dev libmysqlclient-dev`
