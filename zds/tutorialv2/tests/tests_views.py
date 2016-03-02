@@ -1,3 +1,5 @@
+import codecs
+
 from django.contrib.auth.models import Group
 
 import os
@@ -29,7 +31,7 @@ from django.utils.encoding import smart_text
 from zds.utils.models import HelpWriting, CommentDislike, CommentLike, Alert
 from zds.utils.factories import HelpWritingFactory
 from zds.utils.templatetags.interventions import interventions_topics
-
+import codecs
 try:
     import ujson as json_reader
 except ImportError:
@@ -3122,9 +3124,8 @@ class ContentTests(TestCase):
                 },
                 follow=False
             )
-            manifest = open(os.path.join(old_path, "manifest.json"), 'r')
-            json = json_reader.loads(manifest.read())
-            manifest.close()
+            with codecs.open(os.path.join(old_path, "manifest.json"), 'r', encoding="utf-8") as manifest:
+                json = json_reader.loads(manifest.read())
             self.assertEqual(result.status_code, 302)
             self.assertEqual(json["title"], PublishableContent.objects.last().title)
 
