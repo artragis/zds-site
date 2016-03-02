@@ -1236,9 +1236,8 @@ class ContentTests(TestCase):
             follow=False)
         self.assertEqual(result.status_code, 200)
         draft_zip_path = os.path.join(tempfile.gettempdir(), 'draft1.zip')
-        f = open(draft_zip_path, 'w')
-        f.write(str(result.content))
-        f.close()
+        with  open(draft_zip_path, "wb") as f:
+            f.write(result.content)
 
         versioned = PublishableContent.objects.get(pk=tuto_pk).load_version()
         version_1 = versioned.current_version
@@ -1290,10 +1289,8 @@ class ContentTests(TestCase):
             follow=False)
         self.assertEqual(result.status_code, 200)
         draft_zip_path_2 = os.path.join(tempfile.gettempdir(), '__draft2.zip')
-        f = open(draft_zip_path_2, 'w')
-        f.write(result.content)
-        f.close()
-
+        with open(draft_zip_path_2, "wb") as f:
+            f.write(result.content)
         versioned = PublishableContent.objects.get(pk=tuto_pk).load_version()
         version_2 = versioned.current_version
         extract2 = versioned.children[-1].children[-1]
@@ -1318,10 +1315,8 @@ class ContentTests(TestCase):
             follow=False)
         self.assertEqual(result.status_code, 200)
         draft_zip_path_3 = os.path.join(tempfile.gettempdir(), '__draft3.zip')
-        f = open(draft_zip_path_3, 'w')
-        f.write(result.content)
-        f.close()
-
+        with open(draft_zip_path_3, 'wb') as f:
+            f.write(result.content)
         archive = zipfile.ZipFile(draft_zip_path_3, 'r')
 
         found = True
