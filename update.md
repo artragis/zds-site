@@ -476,4 +476,5 @@ Actions à faire pour passer en python3
 ======================================
 
 **ATTENTION** Nécessite un nouveau virtualenv
+- Dans un premier temps, AVANT de lancer la mise à jour il faut installer le nouveau driver MySQL (mysqlclient) :
 - installer python3-dev et libmysqlclient-dev avec `apt-get install python3-dev libmysqlclient-dev`
