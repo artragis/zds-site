@@ -1,14 +1,14 @@
 (function ($, undefined) {
-    var $tribunes = $(".tribune");
-    $tribunes.on("click", ".unpick-action", function () {
+    var $opinions = $(".opinion");
+    $opinions.on("click", ".unpick-action", function () {
        var $button = $(this);
-       var $parent = $button.parent(".tribune");
-       var csrfmiddlewaretoken = $("input[name=csrfmiddlewaretoken]").val();
+       var $row = $button.parent(".opinion");
+       var csrfmiddlewaretoken = $("input[name='csrfmiddlewaretoken']").val();
        $.post($button.attr("data-url"), {
            operation: $button.attr("data-operation"),
-           csrfmiddlewaretoken:csrfmiddlewaretoken
+           csrfmiddlewaretoken: csrfmiddlewaretoken
        }).done(function () {
-           $parent.parent().remove($parent);
+           $row.remove();
        });
     });
 })(jQuery);

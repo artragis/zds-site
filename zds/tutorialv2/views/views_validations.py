@@ -674,7 +674,9 @@ class DoNotPickOpinion(PermissionRequiredMixin, NoValidationBeforeFormViewMixin)
         versioned = self.versioned_object
         self.success_url = versioned.get_absolute_url_online()
         try:
-            PickListOperation.objects.create(content=self.object, operation=form.cleaned_data['operation'])
+            PickListOperation.objects.create(content=self.object, operation=form.cleaned_data['operation'],
+                                             staff_user=self.request.user, operation_date=datetime.now(),
+                                             version=db_object.sha_public)
         except ValueError:
             logger.exception("Could not %s the opinion %s", form.cleaned_data['operation'], str(self.object))
             return HttpResponse(json.dumps({'result': 'FAIL', 'reason': str(_('Mauvaise opération'))}), status=400)
