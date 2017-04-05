@@ -1187,7 +1187,7 @@ class PickListOperation(models.Model):
         return self.operation + ' ' + str(self.content)
 
     def save(self, **kwargs):
-        if not self.content is None and self.content.type == 'OPINION':
+        if self.content is not None and self.content.type == 'OPINION':
             return super(PickListOperation, self).save(**kwargs)
         raise ValueError('Content cannot be null or something else than opinion.', self.content)
 
