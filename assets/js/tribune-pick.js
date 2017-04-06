@@ -8,16 +8,16 @@
            csrfmiddlewaretoken: csrfmiddlewaretoken
        };
        if ($button.data("operation")) {
-           data["operation"] = $button.data("operation");
+           data.operation = $button.data("operation");
        }
        $.post($button.attr("data-url"), data).done(function () {
-           if (data[operation]) {
+           if (data.operation) {
                $row.remove();
            }
            else {
-               $button.prop('disabled', true);
-               var $stateCol = $row.find('.state');
-               $stateCol.text($stateCol.data('toogle'));
+               $button.prop("disabled", true);
+               var $stateCol = $row.find(".state");
+               $stateCol.text($stateCol.data("toogle"));
            }
        });
     });
