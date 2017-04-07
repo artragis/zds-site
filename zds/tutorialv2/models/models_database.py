@@ -1193,7 +1193,9 @@ class PickListOperation(models.Model):
     operation_date = models.DateTimeField(null=False, db_index=True, verbose_name="Date de l'opération")
     version = models.CharField(null=False, blank=False, max_length=128, verbose_name='Version du billet concernée')
     staff_user = models.ForeignKey(User, null=False, on_delete=CASCADE, verbose_name='Modérateur')
-    canceler_user = models.ForeignKey(User, null=True, on_delete=CASCADE, verbose_name='Modérateur qui a annulé la décision')
+    canceler_user = models.ForeignKey(User, null=True, on_delete=CASCADE,
+                                      verbose_name='Modérateur qui a annulé la décision',
+                                      related_name='canceler')
     is_effective = models.BooleanField(verbose_name='Choix actif', default=True)
 
     def __str__(self):
