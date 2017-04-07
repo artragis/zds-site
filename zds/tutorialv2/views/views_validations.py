@@ -587,7 +587,8 @@ class PublishOpinion(LoggedWithReadWriteHability, NoValidationBeforeFormViewMixi
             db_object.public_version = published
             db_object.save()
             # if only ignore, we remove it from history
-            PickListOperation.objects.filter(content=db_object, operation__in=['NO_PICK', 'PICK']).update(is_effective=False)
+            PickListOperation.objects.filter(content=db_object,
+                                             operation__in=['NO_PICK', 'PICK']).update(is_effective=False)
             # Follow
             signals.new_content.send(sender=db_object.__class__, instance=db_object, by_email=False)
 
