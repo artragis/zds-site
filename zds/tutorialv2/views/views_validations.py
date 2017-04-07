@@ -587,7 +587,7 @@ class PublishOpinion(LoggedWithReadWriteHability, NoValidationBeforeFormViewMixi
             db_object.public_version = published
             db_object.save()
             # if only ignore, we remove it from history
-            PickListOperation.objects.filter(content=db_object, operation='NO_PICK').update(is_effective=False)
+            PickListOperation.objects.filter(content=db_object, operation__in=['NO_PICK', 'PICK']).update(is_effective=False)
             # Follow
             signals.new_content.send(sender=db_object.__class__, instance=db_object, by_email=False)
 
@@ -686,6 +686,8 @@ class DoNotPickOpinion(PermissionRequiredMixin, NoValidationBeforeFormViewMixin)
         versioned = self.versioned_object
         self.success_url = versioned.get_absolute_url_online()
         try:
+            if PickListOperation.objects.filter(content=self.object, is_effective=True):
+                raise PermissionDenied
             PickListOperation.objects.create(content=self.object, operation=form.cleaned_data['operation'],
                                              staff_user=self.request.user, operation_date=datetime.now(),
                                              version=db_object.sha_public)
