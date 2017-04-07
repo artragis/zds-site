@@ -667,6 +667,7 @@ class DoNotPickOpinion(PermissionRequiredMixin, NoValidationBeforeFormViewMixin)
         context = super(DoNotPickOpinion, self).get_context_data()
         context['operations'] = PickListOperation.objects\
             .filter(content=self.object)\
+            .order_by('-operation_date')\
             .prefetch_related('staff_user', 'staff_user__profile')
         return context
 
