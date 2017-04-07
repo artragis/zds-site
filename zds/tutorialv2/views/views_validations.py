@@ -116,7 +116,7 @@ class ValidationOpinionListView(LoginRequiredMixin, PermissionRequiredMixin, Lis
         return PublishableContent.objects\
             .filter(type='OPINION', sha_public__isnull=False)\
             .exclude(sha_picked=F('sha_public'))\
-            .exclude(pk__in=PickListOperation.objects.filter(~Q(operation='PICK'), is_effective=True)
+            .exclude(pk__in=PickListOperation.objects.filter(is_effective=True)
                      .values_list('content__pk', flat=True))
 
 
