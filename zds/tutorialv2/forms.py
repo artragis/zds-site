@@ -1191,7 +1191,8 @@ class DoNotPickOpinionForm(forms.Form):
 
     def clean(self):
         cleaned = super(DoNotPickOpinionForm, self).clean()
-        cleaned['operation'] = self.data['operation'] if self.data['operation'] in ['NO_PICK', 'REJECT', 'REMOVE_PUB'] else None
+        cleaned['operation'] = self.data['operation'] \
+            if self.data['operation'] in ['NO_PICK', 'REJECT', 'REMOVE_PUB'] else None
         return cleaned
 
     def is_valid(self):
