@@ -737,9 +737,9 @@ class RevokePickOperation(PermissionRequiredMixin, FormView):
         raise Http404('Impossible')
 
     def post(self, request, *args, **kwargs):
-        operation = PickListOperation.objects.filter(pk=self.kwargs['pk']).first()
-        if operation is None:
-            raise Http404('Introuvable')
+        operation = get_object_or_404(PickListOperation, pk=self.kwargs['pk'])
+        if not operation.is_effective:
+            raise Http404('This operation was already canceled.')
         operation.cancel(self.request.user)
         return HttpResponse(json.dumps({'result': 'OK'}))
 
