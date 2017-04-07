@@ -261,11 +261,8 @@ class SingleContentDetailViewMixin(SingleContentViewMixin, DetailView):
         context['content'] = self.versioned_object
         context['can_edit'] = self.is_author
         context['is_staff'] = self.is_staff
-        if self.is_staff and self.object.type == 'OPINION':
-            context['can_publish'] = PickListOperation.objects.filter(is_active=True, content=self.object,
-                                                                      operation='REMOVE_PUB')
-        else:
-            context['can_publish'] = True
+        if self.object.type == 'OPINION':
+            context['can_publish'] = not self.object.is_definitely_unpublished()
         if self.sha != self.object.sha_draft:
             context['version'] = self.sha
 
