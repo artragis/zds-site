@@ -741,6 +741,10 @@ class RevokePickOperation(PermissionRequiredMixin, FormView):
         if not operation.is_effective:
             raise Http404('This operation was already canceled.')
         operation.cancel(self.request.user)
+        # if a pick operation is canceled, unpick the content
+        if operation.operation == 'PICK':
+            operation.content.sha_picked = None
+            operation.content.save()
         return HttpResponse(json.dumps({'result': 'OK'}))
 
 
