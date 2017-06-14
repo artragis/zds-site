@@ -497,7 +497,7 @@ class UtilsTests(TestCase):
             True)
 
         # go to whatever page, if not, `get_current_user()` does not work at all
-        result = self.client.get(reverse('zds.pages.views.index'))
+        result = self.client.get(reverse('pages-index'))
         self.assertEqual(result.status_code, 200)
 
         actor = get_commit_author()
@@ -510,7 +510,7 @@ class UtilsTests(TestCase):
         self.client.logout()
 
         # as above ...
-        result = self.client.get(reverse('zds.pages.views.index'))
+        result = self.client.get(reverse('pages-index'))
         self.assertEqual(result.status_code, 200)
 
         actor = get_commit_author()
@@ -593,6 +593,6 @@ class UtilsTests(TestCase):
             shutil.rmtree(settings.MEDIA_ROOT)
         if os.path.isdir(settings.ZDS_APP['content']['extra_content_watchdog_dir']):
             shutil.rmtree(settings.ZDS_APP['content']['extra_content_watchdog_dir'])
-        # re-active PDF build
+        # re-activate PDF build
         settings.ZDS_APP['content']['build_pdf_when_published'] = True
         PublicatorRegistery.registry = self.old_registry

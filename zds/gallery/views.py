@@ -188,7 +188,7 @@ def modify_gallery(request):
     # Global actions
 
     if 'delete_multi' in request.POST:
-        list_items = request.POST.getlist('items')
+        list_items = request.POST.getlist('g_items')
 
         # Don't delete gallery when it's link to tutorial
         free_galleries = []
@@ -199,9 +199,13 @@ def modify_gallery(request):
             has_v2_content = v2_content is not None
             if has_v2_content:
                 gallery = Gallery.objects.get(pk=g_pk)
+
                 _type = _(u'au tutoriel')
-                if v2_content.type == 'ARTICLE':
-                    _type = _(u"à l'article")
+                if v2_content.is_article:
+                    _type = _(u'à l\'article')
+                elif v2_content.is_opinion:
+                    _type = _(u'à la tribune')
+
                 error_message = _(u'La galerie « {} » ne peut pas être supprimée car elle est liée {} « {} ».')\
                     .format(gallery.title, _type, v2_content.title)
                 messages.error(request, error_message)
@@ -227,8 +231,8 @@ def modify_gallery(request):
 
         Gallery.objects.filter(pk__in=free_galleries).delete()
         return redirect(reverse('gallery-list'))
-    elif 'adduser' in request.POST:
 
+    elif 'adduser' in request.POST:
         # Gallery-specific actions
 
         try:
@@ -398,7 +402,7 @@ class DeleteImages(DeleteView):
         ensure_user_access(gallery, request.user, can_write=True)
 
         if 'delete_multi' in request.POST:
-            list_items = request.POST.getlist('items')
+            list_items = request.POST.getlist('g_items')
             Image.objects.filter(pk__in=list_items, gallery=gallery).delete()
         elif 'delete' in request.POST:
             pkey = self.request.POST['image']

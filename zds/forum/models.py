@@ -18,8 +18,7 @@ from zds.forum.managers import TopicManager, ForumManager, PostManager, TopicRea
 from zds.notification import signals
 from zds.settings import ZDS_APP
 from zds.searchv2.models import AbstractESDjangoIndexable, delete_document_in_elasticsearch, ESIndexManager
-from zds.utils import get_current_user
-from zds.utils import slugify
+from zds.utils import get_current_user, slugify
 from zds.utils.models import Comment, Tag
 
 
@@ -89,7 +88,7 @@ class Forum(models.Model):
     subtitle = models.CharField('Sous-titre', max_length=200)
 
     # Groups authorized to read this forum. If no group is defined, the forum is public (and anyone can read it).
-    group = models.ManyToManyField(
+    groups = models.ManyToManyField(
         Group,
         verbose_name='Groupes autorisés (aucun = public)',
         blank=True)
@@ -99,6 +98,7 @@ class Forum(models.Model):
                                                null=True, blank=True, db_index=True)
 
     slug = models.SlugField(max_length=80, unique=True)
+    _nb_group = None
     objects = ForumManager()
 
     def __str__(self):
@@ -148,17 +148,29 @@ class Forum(models.Model):
         :return: `True` if the user can read this forum, `False` otherwise.
         """
 
-        if self.group.count() == 0:
+        if not self.has_group:
             return True
         else:
             # authentication is the best way to be sure groups are available in the user object
             if user is not None:
                 groups = list(user.groups.all()) if not isinstance(user, AnonymousUser) else []
                 return Forum.objects.filter(
-                    group__in=groups,
+                    groups__in=groups,
                     pk=self.pk).exists()
             else:
                 return False
+
+    @property
+    def has_group(self):
+        """
+        Checks if this forum belongs to at least one group
+
+        :return: ``True`` if it belongs to at least one group
+        :rtype: bool
+        """
+        if self._nb_group is None:
+            self._nb_group = self.groups.count()
+        return self._nb_group > 0
 
 
 @python_2_unicode_compatible
@@ -195,6 +207,8 @@ class Topic(AbstractESDjangoIndexable):
     is_solved = models.BooleanField('Est résolu', default=False, db_index=True)
     is_locked = models.BooleanField('Est verrouillé', default=False, db_index=True)
     is_sticky = models.BooleanField('Est en post-it', default=False, db_index=True)
+
+    github_issue = models.PositiveIntegerField('Ticket GitHub', null=True, blank=True)
 
     tags = models.ManyToManyField(
         Tag,
@@ -265,6 +279,7 @@ class Topic(AbstractESDjangoIndexable):
                 logging.getLogger('zds.forum').warn(e)
 
         self.save()
+        signals.edit_content.send(sender=self.__class__, instance=self, action='edit_tags_and_title')
 
     def last_read_post(self):
         """
@@ -393,7 +408,7 @@ class Topic(AbstractESDjangoIndexable):
         es_mapping = super(Topic, cls).get_es_mapping()
 
         es_mapping.field('title', Text(boost=1.5))
-        es_mapping.field('tags', Keyword(boost=2.0))
+        es_mapping.field('tags', Text(boost=2.0))
         es_mapping.field('subtitle', Text())
         es_mapping.field('is_solved', Boolean())
         es_mapping.field('is_locked', Boolean())
@@ -401,11 +416,10 @@ class Topic(AbstractESDjangoIndexable):
         es_mapping.field('pubdate', Date())
         es_mapping.field('forum_pk', Integer())
 
-        # not analyzed:
-        es_mapping.field('get_absolute_url', Text(index=False))
-
+        # not indexed:
+        es_mapping.field('get_absolute_url', Keyword(index=False))
         es_mapping.field('forum_title', Text(index=False))
-        es_mapping.field('forum_get_absolute_url', Text(index=False))
+        es_mapping.field('forum_get_absolute_url', Keyword(index=False))
 
         return es_mapping
 
@@ -497,11 +511,11 @@ class Post(Comment, AbstractESDjangoIndexable):
         es_mapping.field('forum_pk', Integer())
         es_mapping.field('topic_pk', Integer())
 
-        # not analyzed:
-        es_mapping.field('get_absolute_url', Text(index=False))
+        # not indexed:
+        es_mapping.field('get_absolute_url', Keyword(index=False))
         es_mapping.field('topic_title', Text(index=False))
         es_mapping.field('forum_title', Text(index=False))
-        es_mapping.field('forum_get_absolute_url', Text(index=False))
+        es_mapping.field('forum_get_absolute_url', Keyword(index=False))
 
         return es_mapping
 

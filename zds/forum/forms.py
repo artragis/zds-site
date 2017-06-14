@@ -1,11 +1,10 @@
 # coding: utf-8
-
 from django import forms
 from django.conf import settings
 from django.core.urlresolvers import reverse
 
 from crispy_forms.helper import FormHelper
-from crispy_forms.layout import Layout, Field, Hidden
+from crispy_forms.layout import Layout, Field, Hidden, HTML
 from crispy_forms.bootstrap import StrictButton
 from zds.forum.models import Forum, Topic
 from zds.utils.forms import CommonLayoutEditor, TagValidator
@@ -19,7 +18,7 @@ class TopicForm(forms.Form):
         widget=forms.TextInput(
             attrs={
                 'placeholder': _(u'Titre de mon sujet'),
-                'required': 'required',
+                'required': 'required'
             }
         )
     )
@@ -58,9 +57,14 @@ class TopicForm(forms.Form):
         self.helper.form_method = 'post'
 
         self.helper.layout = Layout(
-            Field('title', autocomplete='off'),
+            Field('title'),
             Field('subtitle', autocomplete='off'),
             Field('tags'),
+            HTML(u'''<div id="topic-suggest" style="display:none;"  url="/rechercher/sujets-similaires/">
+  <label>{0}</label>
+  <div id="topic-result-container" data-neither="{1}"></div>
+</div>'''
+                 .format(_(u'Sujets similaires au vôtre :'), _(u'Aucun résultat'))),
             CommonLayoutEditor(),
         )
 

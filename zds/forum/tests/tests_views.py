@@ -9,6 +9,7 @@ from zds.forum.factories import CategoryFactory, ForumFactory, PostFactory, Topi
 from zds.forum.models import Topic, Post
 from zds.notification.models import TopicAnswerSubscription
 from zds.member.factories import ProfileFactory, StaffProfileFactory
+from zds.utils.models import CommentEdit
 
 
 class CategoriesForumsListViewTests(TestCase):
@@ -803,7 +804,7 @@ class FindTopicTest(TestCase):
         another_group = Group.objects.create(name='DummyGroup_2')
         category, forum = create_category(group)
 
-        forum.group.add(another_group)
+        forum.groups.add(another_group)
         forum.save()
 
         profile.user.groups.add(group)
@@ -851,7 +852,7 @@ class FindTopicByTagTest(TestCase):
         another_group = Group.objects.create(name='DummyGroup_2')
         category, forum = create_category(group)
 
-        forum.group.add(another_group)
+        forum.groups.add(another_group)
         forum.save()
 
         profile.user.groups.add(group)
@@ -1220,7 +1221,7 @@ class PostEditTest(TestCase):
 
         self.assertEqual(302, response.status_code)
         post = Post.objects.get(pk=topic.last_message.pk)
-        self.assertEqual(0, len(post.alerts.all()))
+        self.assertEqual(0, len(post.alerts_on_this_comment.all()))
         self.assertFalse(post.is_visible)
         self.assertEqual(profile.user, post.editor)
         self.assertEqual('', post.text_hidden)
@@ -1242,7 +1243,7 @@ class PostEditTest(TestCase):
 
         self.assertEqual(302, response.status_code)
         post = Post.objects.get(pk=topic.last_message.pk)
-        self.assertEqual(0, len(post.alerts.all()))
+        self.assertEqual(0, len(post.alerts_on_this_comment.all()))
         self.assertFalse(post.is_visible)
         self.assertEqual(staff.user, post.editor)
         self.assertEqual(text_hidden_expected, post.text_hidden)
@@ -1315,8 +1316,8 @@ class PostEditTest(TestCase):
 
         self.assertEqual(302, response.status_code)
         post = Post.objects.get(pk=topic.last_message.pk)
-        self.assertEqual(1, len(post.alerts.all()))
-        self.assertEqual(text_expected, post.alerts.all()[0].text)
+        self.assertEqual(1, len(post.alerts_on_this_comment.all()))
+        self.assertEqual(text_expected, post.alerts_on_this_comment.all()[0].text)
 
     def test_failure_edit_post_hidden_message_by_non_staff(self):
         """Test that a non staff cannot access the page to edit a hidden message"""
@@ -1339,6 +1340,32 @@ class PostEditTest(TestCase):
 
         response = self.client.get(reverse('topic-edit') + '?topic={}'.format(topic.pk), follow=False)
         self.assertEqual(403, response.status_code)
+
+    def test_creation_archive_on_edit(self):
+        profile = ProfileFactory()
+        category, forum = create_category()
+        topic = add_topic_in_a_forum(forum, profile)
+        post_before_edit = Post.objects.get(pk=topic.last_message.pk)
+
+        edits_count = CommentEdit.objects.count()
+
+        # Edit post
+        self.assertTrue(self.client.login(username=profile.user.username, password='hostel77'))
+        data = {
+            'text': 'A new post!'
+        }
+        response = self.client.post(
+            reverse('post-edit') + '?message={}'.format(topic.last_message.pk), data, follow=False)
+        self.assertEqual(302, response.status_code)
+
+        # Check that an archive was created
+        self.assertEqual(CommentEdit.objects.count(), edits_count + 1)
+
+        # Check the archive content
+        edit = CommentEdit.objects.latest('date')
+        self.assertEqual(post_before_edit.pk, edit.comment.pk)
+        self.assertEqual(post_before_edit.text, edit.original_text)
+        self.assertEqual(profile.user, edit.editor)
 
 
 class PostUsefulTest(TestCase):
@@ -1652,7 +1679,7 @@ class FindPostTest(TestCase):
         another_group = Group.objects.create(name='DummyGroup_2')
         category, forum = create_category(group)
 
-        forum.group.add(another_group)
+        forum.groups.add(another_group)
         forum.save()
 
         profile.user.groups.add(group)
@@ -1673,7 +1700,7 @@ def create_category(group=None):
     category = CategoryFactory(position=1)
     forum = ForumFactory(category=category, position_in_category=1)
     if group is not None:
-        forum.group.add(group)
+        forum.groups.add(group)
         forum.save()
     return category, forum
 

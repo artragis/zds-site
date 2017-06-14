@@ -18,7 +18,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 
 DEBUG = True
 
-# INTERNAL_IPS = ('127.0.0.1',)  # debug toolbar
+INTERNAL_IPS = ('127.0.0.1',)  # debug toolbar
 
 DATABASES = {
     'default': {
@@ -113,6 +113,7 @@ MIDDLEWARE_CLASSES = (
     'zds.utils.ThreadLocals',
     'zds.middlewares.setlastvisitmiddleware.SetLastVisitMiddleware',
     'zds.middlewares.profile.ProfileMiddleware',
+    'zds.member.utils.ZDSCustomizeSocialAuthExceptionMiddleware',
 )
 
 ROOT_URLCONF = 'zds.urls'
@@ -148,7 +149,7 @@ TEMPLATES = [
         }
     },
 ]
-
+SOCIAL_AUTH_RAISE_EXCEPTIONS = False
 CRISPY_TEMPLATE_PACK = 'bootstrap'
 
 INSTALLED_APPS = (
@@ -245,17 +246,17 @@ REST_FRAMEWORK_EXTENSIONS = {
     'DEFAULT_CACHE_RESPONSE_TIMEOUT': 60 * 15
 }
 
+
 SWAGGER_SETTINGS = {
-    'exclude_namespaces': [
-        'content',
-        'forum'
-    ],
-    'enabled_methods': [
+    'APIS_SORTER': 'alpha',
+    'OPERATIONS_SORTER': 'alpha',
+    'SHOW_REQUEST_HEADERS': True,
+    'SUPPORTED_SUBMIT_METHODS': [
         'get',
         'post',
         'put',
-        'delete'
-    ]
+        'delete',
+    ],
 }
 
 CORS_ORIGIN_ALLOW_ALL = True
@@ -461,6 +462,7 @@ ZDS_APP = {
         'bot_group': u'bot',
         'dev_group': u'devs',
         'members_per_page': 100,
+        'providers_per_page': 100,
         'update_last_visit_interval': 600,  # seconds
     },
     'gallery': {
@@ -471,6 +473,10 @@ ZDS_APP = {
     'article': {
         'home_number': 3,
         'repo_path': os.path.join(BASE_DIR, 'articles-data')
+    },
+    'opinions': {
+        'home_number': 5,
+        'repo_path': os.path.join(BASE_DIR, 'opinions-data')
     },
     'tutorial': {
         'repo_path': os.path.join(BASE_DIR, 'tutoriels-private'),
@@ -501,7 +507,9 @@ ZDS_APP = {
         'import_image_prefix': 'archive',
         'build_pdf_when_published': True,
         'maximum_slug_size': 150,
-        'sec_per_minute': 1500
+        'sec_per_minute': 1500,
+        'editorial_line_link':
+        u'https://zestedesavoir.com/articles/222/la-ligne-editoriale-officielle-de-zeste-de-savoir/'
     },
     'forum': {
         'posts_per_page': 21,
@@ -518,7 +526,7 @@ ZDS_APP = {
         'top_tag_exclu': ['bug', 'suggestion', 'tutoriel', 'beta', 'article']
     },
     'topic': {
-        'home_number': 6,
+        'home_number': 5,
     },
     'comment': {
         'max_pings': 15,
@@ -553,6 +561,9 @@ ZDS_APP = {
                 'global': 3.0,
                 'if_article': 1.0,
                 'if_tutorial': 1.0,
+                'if_medium_or_big_tutorial': 1.5,
+                'if_opinion': 0.66,
+                'if_opinion_not_picked': 0.5
             },
             'topic': {
                 'global': 2.0,
@@ -636,3 +647,4 @@ if DEBUG:
     INSTALLED_APPS += (
         'debug_toolbar',
     )
+    MIDDLEWARE_CLASSES = ('debug_toolbar.middleware.DebugToolbarMiddleware',) + MIDDLEWARE_CLASSES
