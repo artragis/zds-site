@@ -13,10 +13,11 @@ from crispy_forms.helper import FormHelper
 from crispy_forms.layout import HTML, Layout, \
     Submit, Field, ButtonHolder, Hidden, Div
 
-from zds.member.models import Profile, KarmaNote
+from zds.member.models import Profile, KarmaNote, BannedEmailProvider
 from zds.member.validators import validate_not_empty, validate_zds_email, validate_zds_username, validate_passwords, \
     validate_zds_password
 from zds.utils.forms import CommonLayoutModalText
+from zds.utils.models import Licence
 
 # Max password length for the user.
 # Unlike other fields, this is not the length of DB field
@@ -43,7 +44,6 @@ class LoginForm(forms.Form):
     password = forms.CharField(
         label=_(u'Mot de passe'),
         max_length=MAX_PASSWORD_LENGTH,
-        min_length=MIN_PASSWORD_LENGTH,
         required=True,
         widget=forms.PasswordInput,
     )
@@ -64,7 +64,6 @@ class LoginForm(forms.Form):
             Field('username'),
             Field('password'),
             Field('remember'),
-            HTML('{% csrf_token %}'),
             ButtonHolder(
                 StrictButton(_(u'Se connecter'), type='submit'),
             )
@@ -176,7 +175,7 @@ class MiniProfileForm(forms.Form):
         max_length=Profile._meta.get_field('avatar_url').max_length,
         widget=forms.TextInput(
             attrs={
-                'placeholder': _(u'Lien vers un avatar externe laissez vide pour utiliser Gravatar).')
+                'placeholder': _(u'Lien vers un avatar externe (laissez vide pour utiliser Gravatar).')
             }
         )
     )
@@ -188,16 +187,6 @@ class MiniProfileForm(forms.Form):
         widget=forms.TextInput(
             attrs={
                 'placeholder': _(u'Elle apparaitra dans les messages de forums. ')
-            }
-        )
-    )
-
-    github_token = forms.CharField(
-        label='Token GitHub',
-        required=False,
-        widget=forms.TextInput(
-            attrs={
-                'placeholder': _(u'Token qui permet de communiquer avec la plateforme GitHub.')
             }
         )
     )
@@ -231,11 +220,27 @@ class ProfileForm(MiniProfileForm):
         required=False,
         choices=(
             ('show_sign', _(u'Afficher les signatures')),
-            ('is_hover_enabled', _(u'Cochez pour dérouler les menus au survol')),
+            ('is_hover_enabled', _(u'Dérouler les menus au survol')),
             ('allow_temp_visual_changes', _(u'Activer les changements visuels temporaires')),
-            ('email_for_answer', _(u'Recevez un courriel lorsque vous recevez une réponse à un message privé')),
+            ('show_markdown_help', _(u"Afficher l'aide Markdown dans l'éditeur")),
+            ('email_for_answer', _(u"Recevoir un courriel lors d'une réponse à un message privé")),
         ),
         widget=forms.CheckboxSelectMultiple,
+    )
+
+    licence = forms.ModelChoiceField(
+        label=(
+            _(u'Licence préférée pour vos publications '
+              u'(<a href="{0}" alt="{1}">En savoir plus sur les licences et {2}</a>).')
+            .format(
+                settings.ZDS_APP['site']['licenses']['licence_info_title'],
+                settings.ZDS_APP['site']['licenses']['licence_info_link'],
+                settings.ZDS_APP['site']['litteral_name'],
+            )
+        ),
+        queryset=Licence.objects.order_by('title').all(),
+        required=False,
+        empty_label=_('Choisir une licence')
     )
 
     def __init__(self, *args, **kwargs):
@@ -257,6 +262,9 @@ class ProfileForm(MiniProfileForm):
         if 'allow_temp_visual_changes' in initial and initial['allow_temp_visual_changes']:
             self.fields['options'].initial += 'allow_temp_visual_changes'
 
+        if 'show_markdown_help' in initial and initial['show_markdown_help']:
+            self.fields['options'].initial += 'show_markdown_help'
+
         if 'email_for_answer' in initial and initial['email_for_answer']:
             self.fields['options'].initial += 'email_for_answer'
 
@@ -272,12 +280,39 @@ class ProfileForm(MiniProfileForm):
             Naviguez vers l'image voulue et cliquez sur le bouton "<em>Choisir comme avatar</em>".<br/>
             Créez une galerie et importez votre avatar si ce n'est pas déjà fait !</p>''')),
             Field('sign'),
+            Field('licence'),
             Field('options'),
             ButtonHolder(StrictButton(_(u'Enregistrer'), type='submit'),)
         )
-        if initial.get('is_dev'):
-            layout.fields.insert(5, Field('github_token'))
         self.helper.layout = layout
+
+
+class GitHubTokenForm(forms.Form):
+    """
+    Updates the GitHub token.
+    """
+    github_token = forms.CharField(
+        label='Token GitHub',
+        required=True,
+        widget=forms.TextInput(
+            attrs={
+                'placeholder': _(u'Token qui permet de communiquer avec la plateforme GitHub.'),
+                'autocomplete': 'off'
+            }
+        )
+    )
+
+    def __init__(self, *args, **kwargs):
+        super(GitHubTokenForm, self).__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_class = 'content-wrapper'
+        self.helper.form_method = 'post'
+
+        self.helper.layout = Layout(
+            Field('github_token'),
+            ButtonHolder(
+                StrictButton(_(u'Enregistrer'), type='submit'),
+            ))
 
 
 class ChangeUserForm(forms.Form):
@@ -571,3 +606,31 @@ class KarmaForm(forms.Form):
                 StrictButton(u'Valider', type='submit'),
             ),
         )
+
+
+class BannedEmailProviderForm(forms.ModelForm):
+    class Meta:
+        model = BannedEmailProvider
+        fields = ('provider',)
+        widgets = {
+            'provider': forms.TextInput(attrs={
+                'autofocus': 'on',
+                'placeholder': _(u'Le nom de domaine à bannir.'),
+            }),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super(BannedEmailProviderForm, self).__init__(*args, **kwargs)
+        self.helper = FormHelper()
+        self.helper.form_class = 'content-wrapper'
+        self.helper.form_method = 'post'
+
+        self.helper.layout = Layout(
+            Field('provider'),
+            ButtonHolder(
+                StrictButton(_(u'Bannir ce fournisseur'), type='submit'),
+            ))
+
+    def clean_provider(self):
+        data = self.cleaned_data['provider']
+        return data.lower()

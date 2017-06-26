@@ -35,7 +35,7 @@
             <thead>
                 <tr>
                     <th width="15%">{% trans "Sujet" %}</th>
-                    <th width="10%">{% trans "Quand" %}</th>
+                    <th width="10%">{% trans "Date" %}</th>
                     <th width="30%">{% trans "Extrait" %}</th>
                 </tr>
             </thead>
@@ -72,4 +72,14 @@
     {% endif %}
 
     {% include "misc/paginator.html" with position="bottom" %}
+
+    {% if hidden_topics_count %}
+        <em>
+            {% blocktrans count counter=hidden_topics_count %}
+                Note : {{ counter }} sujet est invisible car dans un forum inaccessible.
+            {% plural %}
+                Note : {{ counter }} sujets sont invisibles car dans un forum inaccessible.
+            {% endblocktrans %}
+        </em>
+    {% endif %}
 {% endblock %}

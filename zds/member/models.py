@@ -18,9 +18,10 @@ from django.http import HttpRequest
 from django.utils.translation import ugettext_lazy as _
 
 from zds.forum.models import Post, Topic
+from zds.member import NEW_PROVIDER_USES
 from zds.member.managers import ProfileManager
 from zds.tutorialv2.models.models_database import PublishableContent, PublishedContent
-from zds.utils.models import Alert
+from zds.utils.models import Alert, Licence
 
 
 @python_2_unicode_compatible
@@ -56,15 +57,17 @@ class Profile(models.Model):
     biography = models.TextField('Biographie', blank=True)
     karma = models.IntegerField('Karma', default=0)
     sign = models.TextField('Signature', max_length=500, blank=True)
+    licence = models.ForeignKey(Licence,
+                                verbose_name='Licence préférée',
+                                blank=True, null=True)
     github_token = models.TextField('GitHub', blank=True)
     show_sign = models.BooleanField('Voir les signatures', default=True)
     # do UI components open by hovering them, or is clicking on them required?
     is_hover_enabled = models.BooleanField('Déroulement au survol ?', default=True)
     allow_temp_visual_changes = models.BooleanField('Activer les changements visuels temporaires', default=True)
+    show_markdown_help = models.BooleanField("Afficher l'aide Markdown dans l'éditeur", default=True)
     email_for_answer = models.BooleanField('Envoyer pour les réponse MP', default=False)
-    # SdZ tutorial IDs separated by columns (:).
-    # TODO: bad field name (singular --> should be plural), manually handled multi-valued field.
-    sdz_tutorial = models.TextField('Identifiant des tutos SdZ', blank=True, null=True)
+    show_staff_badge = models.BooleanField('Afficher le badge staff', default=False)
     can_read = models.BooleanField('Possibilité de lire', default=True)
     end_ban_read = models.DateTimeField("Fin d'interdiction de lecture", null=True, blank=True)
     can_write = models.BooleanField("Possibilité d'écrire", default=True)
@@ -298,6 +301,32 @@ class Profile(models.Model):
         """
         return self.get_beta_contents(_type='ARTICLE')
 
+    def get_opinion_count(self):
+        """
+        :return: the count of opinions with this user as author. Count all opinions, no only published one.
+        """
+        return self.get_content_count(_type='OPINION')
+
+    def get_opinions(self):
+        """
+        :return: All opinions with this user as author.
+        """
+        return self.get_contents(_type='OPINION')
+
+    def get_public_opinions(self):
+        """
+        :return: All published opinions with this user as author.
+        """
+        return self.get_public_contents(_type='OPINION')
+
+    def get_draft_opinions(self):
+        """
+        Return all draft opinion with this user as author.
+        A draft opinion is a opinion which is not published or in validation.
+        :return: All draft opinion with this user as author.
+        """
+        return self.get_draft_contents(_type='OPINION')
+
     def get_posts(self):
         return Post.objects.filter(author=self.user).all()
 
@@ -378,6 +407,37 @@ def auto_delete_token_on_unregistering(sender, instance, **kwargs):
     TokenRegister.objects.filter(user=instance).delete()
 
 
+@receiver(models.signals.post_save, sender=User)
+def remove_token_github_on_removing_from_dev_group(sender, instance, **kwargs):
+    """
+    This signal receiver removes the GitHub token of an user if he's not in the dev group
+    """
+    try:
+        profile = instance.profile
+        if profile.github_token and not profile.is_dev():
+            profile.github_token = ''
+            profile.save()
+    except Profile.DoesNotExist:
+        pass
+
+
+@receiver(models.signals.post_save, sender=User)
+def update_staff_badge(sender, instance, **kwargs):
+    """
+    This signal is used to update the field show_staff_badge of the user profile, which is used
+    to know if the staff badge should be displayed for this user.
+    The badge is displayed when the user has the perm forum.change_post.
+    """
+    try:
+        user_profile = instance.profile
+        old_staff_badge = instance.profile.show_staff_badge
+        user_profile.show_staff_badge = instance.has_perm('forum.change_post')
+        if user_profile.show_staff_badge != old_staff_badge:
+            user_profile.save()
+    except Profile.DoesNotExist:
+        pass
+
+
 @python_2_unicode_compatible
 class TokenForgotPassword(models.Model):
     """
@@ -438,6 +498,46 @@ def save_profile(backend, user, response, *args, **kwargs):
 
 
 @python_2_unicode_compatible
+class NewEmailProvider(models.Model):
+    """A new-used email provider which should be checked by a staff member."""
+
+    class Meta:
+        verbose_name = 'Nouveau fournisseur'
+        verbose_name_plural = 'Nouveaux fournisseurs'
+
+    provider = models.CharField('Fournisseur', max_length=253, unique=True, db_index=True)
+    use = models.CharField('Utilisation', max_length=11, choices=NEW_PROVIDER_USES)
+    user = models.ForeignKey(User, verbose_name='Utilisateur concerné', on_delete=models.CASCADE,
+                             related_name='new_providers', db_index=True)
+    date = models.DateTimeField("Date de l'alerte", auto_now_add=True, db_index=True,
+                                db_column='alert_date')
+
+    def __str__(self):
+        return 'Alert about the new provider {}'.format(self.provider)
+
+
+@python_2_unicode_compatible
+class BannedEmailProvider(models.Model):
+    """
+    A email provider which has been banned by a staff member.
+    It cannot be used for registration.
+    """
+
+    class Meta:
+        verbose_name = 'Fournisseur banni'
+        verbose_name_plural = 'Fournisseurs bannis'
+
+    provider = models.CharField('Fournisseur', max_length=253, unique=True, db_index=True)
+    moderator = models.ForeignKey(User, verbose_name='Modérateur', on_delete=models.CASCADE,
+                                  related_name='banned_providers', db_index=True)
+    date = models.DateTimeField('Date du bannissement', auto_now_add=True, db_index=True,
+                                db_column='ban_date')
+
+    def __str__(self):
+        return 'Ban of the {} provider'.format(self.provider)
+
+
+@python_2_unicode_compatible
 class Ban(models.Model):
     """
     This model stores all sanctions (not only bans).
@@ -481,7 +581,7 @@ class KarmaNote(models.Model):
     pubdate = models.DateTimeField('Date d\'ajout', auto_now_add=True)
 
     def __str__(self):
-        return '{0} - note : {1} ({2}) '.format(self.user.username, self.comment, self.pubdate)
+        return '{0} - note : {1} ({2}) '.format(self.user.username, self.note, self.pubdate)
 
 
 def logout_user(username):

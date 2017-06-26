@@ -13,7 +13,7 @@ from django.contrib.auth.models import User, Group
 from django.template.context_processors import csrf
 from django.core.exceptions import PermissionDenied
 from django.core.mail import EmailMultiAlternatives
-from django.core.urlresolvers import reverse
+from django.core.urlresolvers import reverse, reverse_lazy
 from django.db import transaction
 from django.db.models import Q
 from django.http import Http404, HttpResponseBadRequest, StreamingHttpResponse
@@ -29,18 +29,20 @@ from django.views.generic import DetailView, UpdateView, CreateView, FormView
 from zds.forum.models import Topic, TopicRead
 from zds.gallery.forms import ImageAsAvatarForm
 from zds.gallery.models import UserGallery
+from zds.member import NEW_ACCOUNT, EMAIL_EDIT
 from zds.member.commons import ProfileCreate, TemporaryReadingOnlySanction, ReadingOnlySanction, \
     DeleteReadingOnlySanction, TemporaryBanSanction, BanSanction, DeleteBanSanction, TokenGenerator
-from zds.member.decorator import can_write_and_read_now
+from zds.member.decorator import can_write_and_read_now, LoginRequiredMixin, PermissionRequiredMixin
 from zds.member.forms import LoginForm, MiniProfileForm, ProfileForm, RegisterForm, \
     ChangePasswordForm, ChangeUserForm, NewPasswordForm, \
-    PromoteMemberForm, KarmaForm, UsernameAndEmailForm
-from zds.member.models import Profile, TokenForgotPassword, TokenRegister, KarmaNote, Ban
+    PromoteMemberForm, KarmaForm, UsernameAndEmailForm, GitHubTokenForm, \
+    BannedEmailProviderForm
+from zds.member.models import Profile, TokenForgotPassword, TokenRegister, KarmaNote, Ban, \
+    BannedEmailProvider, NewEmailProvider
 from zds.mp.models import PrivatePost, PrivateTopic
-from zds.tutorialv2.models.models_database import PublishableContent
 from zds.notification.models import TopicAnswerSubscription, NewPublicationSubscription
-from zds.tutorialv2.models.models_database import PublishedContent
-from zds.utils.models import Comment, CommentVote, Alert
+from zds.tutorialv2.models.models_database import PublishedContent, PickListOperation
+from zds.utils.models import Comment, CommentVote, Alert, CommentEdit
 from zds.utils.mps import send_mp
 from zds.utils.paginator import ZdSPagingListView
 from zds.utils.tokens import generate_token
@@ -82,11 +84,18 @@ class MemberDetail(DetailView):
         for topic in context['topics']:
             topic.is_followed = topic in followed_topics
         context['articles'] = PublishedContent.objects.last_articles_of_a_member_loaded(usr)
+        context['opinions'] = PublishedContent.objects.last_opinions_of_a_member_loaded(usr)
         context['tutorials'] = PublishedContent.objects.last_tutorials_of_a_member_loaded(usr)
-        context['karmanotes'] = KarmaNote.objects.filter(user=usr).order_by('-pubdate')
-        context['karmaform'] = KarmaForm(profile)
         context['topic_read'] = TopicRead.objects.list_read_topic_pk(self.request.user, context['topics'])
         context['subscriber_count'] = NewPublicationSubscription.objects.get_subscriptions(self.object).count()
+        if self.request.user.has_perm('member.change_profile'):
+            sanctions = list(Ban.objects.filter(user=usr).select_related('moderator'))
+            notes = list(KarmaNote.objects.filter(user=usr).select_related('moderator'))
+            actions = sanctions + notes
+            actions.sort(key=lambda action: action.pubdate)
+            actions.reverse()
+            context['actions'] = actions
+            context['karmaform'] = KarmaForm(profile)
         return context
 
 
@@ -112,10 +121,10 @@ class UpdateMember(UpdateView):
             'show_sign': profile.show_sign,
             'is_hover_enabled': profile.is_hover_enabled,
             'allow_temp_visual_changes': profile.allow_temp_visual_changes,
+            'show_markdown_help': profile.show_markdown_help,
             'email_for_answer': profile.email_for_answer,
             'sign': profile.sign,
-            'github_token': profile.github_token,
-            'is_dev': profile.is_dev(),
+            'licence': profile.licence,
         })
 
         return form
@@ -146,11 +155,11 @@ class UpdateMember(UpdateView):
         profile.show_sign = 'show_sign' in cleaned_data_options
         profile.is_hover_enabled = 'is_hover_enabled' in cleaned_data_options
         profile.allow_temp_visual_changes = 'allow_temp_visual_changes' in cleaned_data_options
+        profile.show_markdown_help = 'show_markdown_help' in cleaned_data_options
         profile.email_for_answer = 'email_for_answer' in cleaned_data_options
         profile.avatar_url = form.data['avatar_url']
         profile.sign = form.data['sign']
-        if 'github_token' in form.data:
-            profile.github_token = form.data['github_token']
+        profile.licence = form.cleaned_data['licence']
 
     def get_success_url(self):
         return reverse('update-member')
@@ -169,6 +178,68 @@ class UpdateMember(UpdateView):
 
     def get_error_message(self):
         return _(u'Une erreur est survenue.')
+
+
+class UpdateGitHubToken(UpdateView):
+    """Updates the GitHub token."""
+
+    form_class = GitHubTokenForm
+    template_name = 'member/settings/github.html'
+
+    @method_decorator(login_required)
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.profile.is_dev():
+            raise PermissionDenied
+        return super(UpdateGitHubToken, self).dispatch(request, *args, **kwargs)
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(Profile, user=self.request.user)
+
+    def get_form(self, form_class=GitHubTokenForm):
+        return form_class()
+
+    def post(self, request, *args, **kwargs):
+        form = self.form_class(request.POST)
+
+        if form.is_valid():
+            return self.form_valid(form)
+
+        return render(request, self.template_name, {'form': form})
+
+    def form_valid(self, form):
+        profile = self.get_object()
+        profile.github_token = form.data['github_token']
+        profile.save()
+        messages.success(self.request, self.get_success_message())
+
+        return redirect(self.get_success_url())
+
+    def get_success_url(self):
+        return reverse('update-github')
+
+    def get_success_message(self):
+        return _(u'Votre token GitHub a été mis à jour.')
+
+    def get_error_message(self):
+        return _(u'Une erreur est survenue.')
+
+
+@require_POST
+@login_required
+def remove_github_token(request):
+    """
+    Removes the current user's token
+    """
+
+    profile = get_object_or_404(Profile, user=request.user)
+    if not profile.is_dev():
+        raise PermissionDenied
+
+    profile.github_token = ''
+    profile.save()
+
+    messages.success(request, _(u'Votre token GitHub a été supprimé.'))
+    return redirect('update-github')
 
 
 class UpdateAvatarMember(UpdateMember):
@@ -252,6 +323,12 @@ class UpdateUsernameEmailMember(UpdateMember):
             profile.user.username = new_username
         if new_email and new_email != previous_email:
             profile.user.email = new_email
+            # create an alert for the staff if it's a new provider
+            provider = provider = new_email.split('@')[-1].lower()
+            if not NewEmailProvider.objects.filter(provider=provider).exists() \
+                    and not User.objects.filter(email__iendswith='@{}'.format(provider)) \
+                    .exclude(pk=profile.user.pk).exists():
+                NewEmailProvider.objects.create(user=profile.user, provider=provider, use=EMAIL_EDIT)
 
     def get_success_url(self):
         profile = self.get_object()
@@ -368,6 +445,8 @@ def unregister(request):
     external = get_object_or_404(User, username=settings.ZDS_APP['member']['external_account'])
     current = request.user
     # Nota : as of v21 all about content paternity is held by a proper receiver in zds.tutorialv2.models.models_database
+    PickListOperation.objects.filter(staff_user=current).update(staff_user=anonymous)
+    PickListOperation.objects.filter(canceler_user=current).update(canceler_user=anonymous)
     # comments likes / dislikes
     votes = CommentVote.objects.filter(user=current)
     for vote in votes:
@@ -380,11 +459,14 @@ def unregister(request):
     # all messages anonymisation (forum, article and tutorial posts)
     Comment.objects.filter(author=current).update(author=anonymous)
     PrivatePost.objects.filter(author=current).update(author=anonymous)
+    CommentEdit.objects.filter(editor=current).update(editor=anonymous)
+    CommentEdit.objects.filter(deleted_by=current).update(deleted_by=anonymous)
     # karma notes, alerts and sanctions anonymisation (to keep them)
     KarmaNote.objects.filter(moderator=current).update(moderator=anonymous)
     Ban.objects.filter(moderator=current).update(moderator=anonymous)
     Alert.objects.filter(author=current).update(author=anonymous)
     Alert.objects.filter(moderator=current).update(moderator=anonymous)
+    BannedEmailProvider.objects.filter(moderator=current).update(moderator=anonymous)
     # in case current has been moderator in his old day
     Comment.objects.filter(editor=current).update(editor=anonymous)
     for topic in PrivateTopic.objects.filter(author=current):
@@ -480,104 +562,6 @@ def modify_profile(request, user_pk):
     return redirect(profile.get_absolute_url())
 
 
-@login_required
-def tutorials(request):
-    """Returns all tutorials of the authenticated user."""
-
-    # The type indicate what the user would like to display. We can display
-    # public, draft, beta, validate or all user's tutorials.
-
-    try:
-        state = request.GET['type']
-    except KeyError:
-        state = None
-
-    # The sort indicate the order of tutorials.
-
-    try:
-        sort_tuto = request.GET['sort']
-    except KeyError:
-        sort_tuto = 'abc'
-
-    # Retrieves all tutorials of the current user.
-
-    profile = request.user.profile
-    if state == 'draft':
-        user_tutorials = profile.get_draft_tutos()
-    elif state == 'beta':
-        user_tutorials = profile.get_beta_tutos()
-    elif state == 'validate':
-        user_tutorials = profile.get_validate_tutos()
-    elif state == 'public':
-        user_tutorials = profile.get_public_tutos()
-    else:
-        user_tutorials = profile.get_tutos()
-
-    # Order articles (abc by default)
-
-    if sort_tuto == 'creation':
-        pass  # nothing to do. Tutorials are already sort by creation date
-    elif sort_tuto == 'modification':
-        user_tutorials = user_tutorials.order_by('-update')
-    else:
-        user_tutorials = user_tutorials.extra(select={'lower_title': 'lower(title)'}).order_by('lower_title')
-
-    return render(
-        request,
-        'tutorial/member/index.html',
-        {'tutorials': user_tutorials, 'type': state, 'sort': sort_tuto}
-    )
-
-
-@login_required
-def articles(request):
-    """Returns all articles of the authenticated user."""
-
-    # The type indicate what the user would like to display. We can display public, draft or all user's articles.
-
-    try:
-        state = request.GET['type']
-    except KeyError:
-        state = None
-
-    # The sort indicate the order of articles.
-
-    try:
-        sort_articles = request.GET['sort']
-    except KeyError:
-        sort_articles = 'abc'
-
-    # Retrieves all articles of the current user.
-
-    profile = request.user.profile
-    if state == 'draft':
-        user_articles = profile.get_draft_articles()
-    elif state == 'validate':
-        user_articles = profile.get_validate_articles()
-    elif state == 'public':
-        user_articles = profile.get_public_articles()
-    else:
-        user_articles = PublishableContent.objects\
-            .filter(authors__pk__in=[request.user.pk], type='ARTICLE')\
-            .prefetch_related('authors', 'authors__profile')
-
-    # Order articles (abc by default)
-
-    if sort_articles == 'creation':
-        pass  # nothing to do. Articles are already sort by creation date
-    elif sort_articles == 'modification':
-        user_articles = user_articles.order_by('-update')
-    else:
-        user_articles = user_articles.extra(select={'lower_title': 'lower(title)'}).order_by('lower_title')
-    user_articles = [raw_article.load_dic(raw_article.load_json(None, raw_article.on_line()))
-                     for raw_article in user_articles]
-    return render(
-        request,
-        'article/member/index.html',
-        {'articles': user_articles, 'type': type, 'sort': sort_articles}
-    )
-
-
 # settings for public profile
 
 @can_write_and_read_now
@@ -622,6 +606,99 @@ def settings_mini_profile(request, user_name):
             u'Le profil que vous éditez n\'est pas le vôtre. '
             u'Soyez encore plus prudent lors de l\'édition de celui-ci !'))
         return render(request, 'member/settings/profile.html', data)
+
+
+class NewEmailProvidersList(LoginRequiredMixin, PermissionRequiredMixin, ZdSPagingListView):
+    permissions = ['member.change_bannedemailprovider']
+    paginate_by = settings.ZDS_APP['member']['providers_per_page']
+
+    model = NewEmailProvider
+    context_object_name = 'providers'
+    template_name = 'member/settings/new_email_providers.html'
+    queryset = NewEmailProvider.objects \
+        .select_related('user') \
+        .select_related('user__profile') \
+        .order_by('-date')
+
+
+@require_POST
+@login_required
+@permission_required('member.change_bannedemailprovider', raise_exception=True)
+def check_new_email_provider(request, provider_pk):
+    """Remove an alert about a new provider"""
+
+    provider = get_object_or_404(NewEmailProvider, pk=provider_pk)
+    if 'ban' in request.POST \
+            and not BannedEmailProvider.objects.filter(provider=provider.provider).exists():
+        BannedEmailProvider.objects.create(provider=provider.provider, moderator=request.user)
+    provider.delete()
+
+    messages.success(request, _(u'Action effectuée.'))
+    return redirect('new-email-providers')
+
+
+class BannedEmailProvidersList(LoginRequiredMixin, PermissionRequiredMixin, ZdSPagingListView):
+    permissions = ['member.change_bannedemailprovider']
+    paginate_by = settings.ZDS_APP['member']['providers_per_page']
+
+    model = BannedEmailProvider
+    context_object_name = 'providers'
+    template_name = 'member/settings/banned_email_providers.html'
+    queryset = BannedEmailProvider.objects \
+        .select_related('moderator') \
+        .select_related('moderator__profile') \
+        .order_by('-date')
+
+
+class MembersWithProviderList(LoginRequiredMixin, PermissionRequiredMixin, ZdSPagingListView):
+    permissions = ['member.change_bannedemailprovider']
+    paginate_by = settings.ZDS_APP['member']['members_per_page']
+
+    model = User
+    context_object_name = 'members'
+    template_name = 'member/settings/members_with_provider.html'
+
+    def get_object(self):
+        return get_object_or_404(BannedEmailProvider, pk=self.kwargs['provider_pk'])
+
+    def get_context_data(self, **kwargs):
+        context = super(MembersWithProviderList, self).get_context_data(**kwargs)
+        context['provider'] = self.get_object()
+        return context
+
+    def get_queryset(self):
+        provider = self.get_object()
+        return Profile.objects \
+            .select_related('user') \
+            .order_by('-last_visit') \
+            .filter(user__email__icontains='@{}'.format(provider.provider))
+
+
+class AddBannedEmailProvider(LoginRequiredMixin, PermissionRequiredMixin, CreateView):
+    permissions = ['member.change_bannedemailprovider']
+
+    model = BannedEmailProvider
+    template_name = 'member/settings/add_banned_email_provider.html'
+    form_class = BannedEmailProviderForm
+    success_url = reverse_lazy('banned-email-providers')
+
+    def form_valid(self, form):
+        form.instance.moderator = self.request.user
+        messages.success(self.request, _(u'Le fournisseur a été banni.'))
+        return super(AddBannedEmailProvider, self).form_valid(form)
+
+
+@require_POST
+@login_required
+@permission_required('member.change_bannedemailprovider', raise_exception=True)
+def remove_banned_email_provider(request, provider_pk):
+    """Used to unban an email provider"""
+
+    provider = get_object_or_404(BannedEmailProvider, pk=provider_pk)
+    provider.delete()
+
+    messages.success(request, _(u'Le fournisseur « {} » a été débanni.').format(provider.provider))
+    return redirect('banned-email-providers')
 
 
 def login_view(request):
@@ -803,6 +880,7 @@ def activate_account(request):
             'username': usr.username,
             'tutorials_url': settings.ZDS_APP['site']['url'] + reverse('tutorial:list'),
             'articles_url': settings.ZDS_APP['site']['url'] + reverse('article:list'),
+            'opinions_url': settings.ZDS_APP['site']['url'] + reverse('opinion:list'),
             'members_url': settings.ZDS_APP['site']['url'] + reverse('member-list'),
             'forums_url': settings.ZDS_APP['site']['url'] + reverse('cats-forums-list'),
             'site_name': settings.ZDS_APP['site']['litteral_name']
@@ -818,6 +896,15 @@ def activate_account(request):
             True,
             False)
     token.delete()
+
+    # create an alert for the staff if it's a new provider
+    if usr.email:
+        provider = usr.email.split('@')[-1].lower()
+        if not NewEmailProvider.objects.filter(provider=provider).exists() \
+                and not User.objects.filter(email__iendswith='@{}'.format(provider)) \
+                .exclude(pk=usr.pk).exists():
+            NewEmailProvider.objects.create(user=usr, provider=provider, use=NEW_ACCOUNT)
+
     form = LoginForm(initial={'username': usr.username})
     return render(request, 'member/register/token_success.html', {'usr': usr, 'form': form})
 
@@ -873,16 +960,6 @@ def get_client_ip(request):
         return '0.0.0.0'
 
 
-def date_to_chart(posts):
-    lst = 24 * [0]
-    for i in range(len(lst)):
-        lst[i] = 7 * [0]
-    for post in posts:
-        timestamp = post.pubdate.timetuple()
-        lst[timestamp.tm_hour][(timestamp.tm_wday + 1) % 7] = lst[timestamp.tm_hour][(timestamp.tm_wday + 1) % 7] + 1
-    return lst
-
-
 @login_required
 def settings_promote(request, user_pk):
     """ Manage the admin right of user. Only super user can access """
@@ -914,13 +991,13 @@ def settings_promote(request, user_pk):
                                          .format(user.username, group.name))
                         topics_followed = TopicAnswerSubscription.objects.get_objects_followed_by(user)
                         for topic in topics_followed:
-                            if isinstance(topic, Topic) and group in topic.forum.group.all():
+                            if isinstance(topic, Topic) and group in topic.forum.groups.all():
                                 TopicAnswerSubscription.objects.toggle_follow(topic, user)
         else:
             for group in usergroups:
                 topics_followed = TopicAnswerSubscription.objects.get_objects_followed_by(user)
                 for topic in topics_followed:
-                    if isinstance(topic, Topic) and group in topic.forum.group.all():
+                    if isinstance(topic, Topic) and group in topic.forum.groups.all():
                         TopicAnswerSubscription.objects.toggle_follow(topic, user)
             user.groups.clear()
             messages.warning(request, _(u'{0} n\'appartient (plus ?) à aucun groupe.')

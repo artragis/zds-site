@@ -15,6 +15,7 @@ from django.utils.translation import ugettext_lazy as _
 from os.path import isdir, dirname
 from zds import settings
 from zds.settings import ZDS_APP
+from zds.tutorialv2.models.models_database import ContentReaction
 from zds.tutorialv2.signals import content_unpublished
 from zds.tutorialv2.utils import retrieve_and_update_images_links
 from zds.utils.templatetags.emarkdown import emarkdown
@@ -435,13 +436,21 @@ def unpublish_content(db_object):
 
         if os.path.exists(old_path):
             shutil.rmtree(old_path)
-
+        map(lambda reaction: content_unpublished.send(sender=reaction.__class__, instance=reaction),
+            [ContentReaction.objects.filter(related_content=db_object).all()])
         # remove public_version:
         public_version.delete()
+        update_params = {}
+        update_params['public_version'] = None
 
-        db_object.public_version = None
-        db_object.save()
+        if db_object.is_opinion:
+            update_params['sha_public'] = None
+            update_params['sha_picked'] = None
+            update_params['pubdate'] = None
+
+        db_object.update(**update_params)
         content_unpublished.send(sender=db_object.__class__, instance=db_object)
+
         return True
 
     except (ObjectDoesNotExist, IOError):

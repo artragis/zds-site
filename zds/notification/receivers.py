@@ -7,6 +7,8 @@ from django.db.backends.dummy.base import DatabaseError
 
 import zds
 
+from zds.utils.models import Tag
+
 try:
     from functools import wraps
 except ImportError:
@@ -81,6 +83,12 @@ def mark_topic_notifications_read(sender, **kwargs):
     if subscription:
         subscription.mark_notification_read(content=topic)
 
+    # Subscription to the tags
+    for tag in topic.tags.all():
+        subscription = NewTopicSubscription.objects.get_existing(user, tag, is_active=True)
+        if subscription:
+            subscription.mark_notification_read(content=topic)
+
     content_type = ContentType.objects.get_for_model(topic)
     notifications = Notification.objects.filter(subscription__user=user, object_id=topic.pk,
                                                 content_type__pk=content_type.pk, is_read=False,
@@ -152,8 +160,10 @@ def edit_topic_event(sender, **kwargs):
         - instance: the topic edited.
         - action: action of the edit.
     """
+    topic = kwargs.get('instance')
+    topic_content_type = ContentType.objects.get_for_model(topic)
+
     if kwargs.get('action') == 'move':
-        topic = kwargs.get('instance')
 
         # If the topic is moved to a restricted forum, users who cannot read this topic any more unfollow it.
         # This avoids unreachable notifications.
@@ -161,9 +171,8 @@ def edit_topic_event(sender, **kwargs):
         NewTopicSubscription.objects.mark_read_everybody_at(topic)
         # If the topic is moved to a forum followed by the user, we update the subscription of the notification.
         # Otherwise, we update the notification as dead.
-        content_type = ContentType.objects.get_for_model(topic)
         notifications = Notification.objects \
-            .filter(object_id=topic.pk, content_type__pk=content_type.pk, is_read=False).all()
+            .filter(object_id=topic.pk, content_type__pk=topic_content_type.pk, is_read=False).all()
         for notification in notifications:
             subscription = NewTopicSubscription.objects \
                 .get_existing(notification.subscription.user, topic.forum, is_active=True)
@@ -173,6 +182,39 @@ def edit_topic_event(sender, **kwargs):
             elif notification.subscription.content_object != notification.content_object.forum:
                 notification.is_dead = True
                 notification.save()
+
+    elif kwargs.get('action') == 'edit_tags_and_title':
+        topic = kwargs.get('instance')
+
+        # Update notification as dead if it was triggered by a deleted tag
+        tag_content_type = ContentType.objects.get_for_model(Tag)
+        notifications = Notification.objects \
+            .filter(object_id=topic.pk, content_type__pk=topic_content_type.pk, is_read=False).all()
+        for notification in notifications:
+            is_still_valid = notification.subscription.content_type != tag_content_type
+            if not is_still_valid:
+                for tag in topic.tags.all():
+                    if tag.id == notification.subscription.object_id:
+                        is_still_valid = True
+                        break
+            if not is_still_valid:
+                subscription = NewTopicSubscription.objects \
+                    .get_existing(notification.subscription.user, topic.forum, is_active=True)
+                if subscription:
+                    notification.subscription = subscription
+                else:
+                    notification.is_dead = True
+                notification.save()
+
+        # Add notification of new topic for the subscription on the new tags
+        for tag in topic.tags.all():
+            subscriptions = NewTopicSubscription.objects.filter(
+                object_id=tag.id, content_type__pk=tag_content_type.pk, is_active=True)
+            for subscription in subscriptions:
+                notification = Notification.objects.filter(object_id=topic.id, subscription=subscription)
+                if not notification:
+                    if subscription.user != topic.author:
+                        subscription.send_notification(content=topic, sender=topic.author)
 
 
 @receiver(post_save, sender=Topic)
@@ -249,7 +291,8 @@ def content_published_event(sender, **kwargs):
     by_email = kwargs.get('by_email')
     authors = list(content.authors.all())
     for user in authors:
-        ContentReactionAnswerSubscription.objects.toggle_follow(content, user, by_email=by_email)
+        if not ContentReactionAnswerSubscription.objects.get_existing(user, content):
+            ContentReactionAnswerSubscription.objects.toggle_follow(content, user, by_email=by_email)
         # no need for condition here, get_or_create_active has its own
         subscription = NewPublicationSubscription.objects.get_or_create_active(user, user)
         subscription.send_notification(content=content, sender=user, send_email=by_email)
@@ -370,6 +413,7 @@ def delete_notifications(sender, instance, **kwargs):
 
 
 @receiver(zds.tutorialv2.signals.content_unpublished, sender=PublishableContent)
+@receiver(zds.tutorialv2.signals.content_unpublished, sender=ContentReaction)
 def cleanup_notification_for_unpublished_content(sender, instance, **_):
     """
     Avoid persistant notification if a content is unpublished. A real talk has to be lead to avoid such cross module \
@@ -382,12 +426,16 @@ def cleanup_notification_for_unpublished_content(sender, instance, **_):
     logger.debug('deal with %s(%s) notifications.', sender, instance)
     try:
         notifications = Notification.objects\
-            .filter(content_type=ContentType.objects.get_for_model(instance, True), object_id=instance.pk)
+            .filter(content_type=ContentType.objects.get_for_model(instance, True),
+                    object_id=instance.pk)
         for notification in notifications:
-            if notification.subscription.last_notification.pk == notification.pk:
+            subscription = notification.subscription
+            if subscription.last_notification and subscription.last_notification.pk == notification.pk:
                 notification.subscription.last_notification = None
                 notification.subscription.save()
             notification.delete()
+        Subscription.objects.filter(content_type=ContentType.objects.get_for_model(instance, True),
+                                    object_id=instance.pk).update(is_active=False)
         logger.debug('Nothing went wrong.')
     except DatabaseError:
         logger.exception()

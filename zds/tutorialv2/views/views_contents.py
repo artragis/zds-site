@@ -10,6 +10,7 @@ import zipfile
 from datetime import datetime
 
 from PIL import Image as ImagePIL
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.models import User
@@ -28,15 +29,15 @@ from easy_thumbnails.files import get_thumbnailer
 from git import BadName, BadObject, GitCommandError, objects
 from uuslug import slugify
 
-from zds.forum.models import Forum, mark_read
-from zds.forum.models import Topic
+from zds.forum.models import Forum, mark_read, Topic
 from zds.gallery.models import Gallery, UserGallery, Image, GALLERY_WRITE
 from zds.member.decorator import LoggedWithReadWriteHability, LoginRequiredMixin, PermissionRequiredMixin
 from zds.member.models import Profile
 from zds.notification.models import TopicAnswerSubscription, NewPublicationSubscription
 from zds.tutorialv2.forms import ContentForm, JsFiddleActivationForm, AskValidationForm, AcceptValidationForm, \
     RejectValidationForm, RevokeValidationForm, WarnTypoForm, ImportContentForm, ImportNewContentForm, ContainerForm, \
-    ExtractForm, BetaForm, MoveElementForm, AuthorForm, RemoveAuthorForm, CancelValidationForm
+    ExtractForm, BetaForm, MoveElementForm, AuthorForm, RemoveAuthorForm, CancelValidationForm, PublicationForm, \
+    UnpublicationForm
 from zds.tutorialv2.mixins import SingleContentDetailViewMixin, SingleContentFormViewMixin, SingleContentViewMixin, \
     SingleContentDownloadViewMixin, SingleContentPostMixin, FormWithPreview
 from zds.tutorialv2.models import TYPE_CHOICES_DICT
@@ -46,6 +47,7 @@ from zds.tutorialv2.utils import search_container_or_404, get_target_tagged_tree
     try_adopt_new_child, TooDeepContainerError, BadManifestError, get_content_from_json, init_new_repo, \
     default_slug_pool, BadArchiveError, InvalidSlugError
 from zds.utils.forums import send_post, lock_topic, create_topic, unlock_topic
+
 from zds.utils.models import HelpWriting
 from zds.utils.mps import send_mp
 from zds.utils.paginator import ZdSPagingListView, make_pagination
@@ -65,16 +67,35 @@ class RedirectOldBetaTuto(RedirectView):
 
 
 class CreateContent(LoggedWithReadWriteHability, FormWithPreview):
+    """
+    Handle content creation. Since v22 a licence must be explicitly selected
+    instead of defaulting to "All rights reserved". Users can however
+    set a default licence in their profile.
+    """
     template_name = 'tutorialv2/create/content.html'
     model = PublishableContent
     form_class = ContentForm
     content = None
     created_content_type = 'TUTORIAL'
 
+    def get_form_kwargs(self):
+        kwargs = super(CreateContent, self).get_form_kwargs()
+        kwargs['for_tribune'] = self.created_content_type == 'OPINION'
+        return kwargs
+
     def get_form(self, form_class=ContentForm):
         form = super(CreateContent, self).get_form(form_class)
         form.initial['type'] = self.created_content_type
+        # Check for default licence in the profile
+        profile = self.request.user.profile
+        form.initial['licence'] = profile.licence
         return form
+
+    def get_context_data(self, **kwargs):
+        context = super(CreateContent, self).get_context_data(**kwargs)
+        context['editorial_line_link'] = settings.ZDS_APP['content']['editorial_line_link']
+        context['site_name'] = settings.ZDS_APP['site']['litteral_name']
+        return context
 
     def form_valid(self, form):
 
@@ -84,7 +105,6 @@ class CreateContent(LoggedWithReadWriteHability, FormWithPreview):
         self.content.description = form.cleaned_data['description']
         self.content.type = form.cleaned_data['type']
         self.content.licence = form.cleaned_data['licence']
-
         self.content.creation_date = datetime.now()
 
         # Creating the gallery
@@ -94,14 +114,8 @@ class CreateContent(LoggedWithReadWriteHability, FormWithPreview):
         gal.pubdate = datetime.now()
         gal.save()
 
-        # Attach user to gallery
-        userg = UserGallery()
-        userg.gallery = gal
-        userg.mode = 'W'  # write mode
-        userg.user = self.request.user
-        userg.save()
         self.content.gallery = gal
-
+        self.content.save()
         # create image:
         if 'image' in self.request.FILES:
             img = Image()
@@ -115,9 +129,10 @@ class CreateContent(LoggedWithReadWriteHability, FormWithPreview):
 
         self.content.save()
 
-        # We need to save the tutorial before changing its author list since it's a many-to-many relationship
+        # We need to save the content before changing its author list since it's a many-to-many relationship
         self.content.authors.add(self.request.user)
-
+        self.content.ensure_author_gallery()
+        self.content.save()
         # Add subcategories on tutorial
         for subcat in form.cleaned_data['subcategory']:
             self.content.subcategory.add(subcat)
@@ -171,12 +186,19 @@ class DisplayContent(LoginRequiredMixin, SingleContentDetailViewMixin):
         if self.versioned_object.sha_public:
             context['formRevokeValidation'] = RevokeValidationForm(
                 self.versioned_object, initial={'version': self.versioned_object.sha_public})
+            context['formUnpublication'] = UnpublicationForm(
+                self.versioned_object, initial={'version': self.versioned_object.sha_public})
 
         if self.versioned_object.is_beta:
             context['formWarnTypo'] = WarnTypoForm(self.versioned_object, self.versioned_object, public=False)
 
         context['validation'] = validation
         context['formJs'] = form_js
+
+        if self.versioned_object.requires_validation_before:
+            context['formPublication'] = PublicationForm(self.versioned_object, initial={'source': self.object.source})
+        else:
+            context['formPublication'] = None
 
     def get_context_data(self, **kwargs):
         context = super(DisplayContent, self).get_context_data(**kwargs)
@@ -216,11 +238,22 @@ class DisplayBetaContent(DisplayContent):
 
         return obj
 
+    def get_context_data(self, **kwargs):
+        context = super(DisplayBetaContent, self).get_context_data(**kwargs)
+        context['helps'] = self.object.helps
+        context['pm_link'] = self.object.get_absolute_contact_url()
+        return context
+
 
 class EditContent(LoggedWithReadWriteHability, SingleContentFormViewMixin, FormWithPreview):
     template_name = 'tutorialv2/edit/content.html'
     model = PublishableContent
     form_class = ContentForm
+
+    def get_form_kwargs(self):
+        kwargs = super(EditContent, self).get_form_kwargs()
+        kwargs['for_tribune'] = self.object.type == 'OPINION'
+        return kwargs
 
     def get_initial(self):
         """rewrite function to pre-populate form"""
@@ -308,9 +341,11 @@ class EditContent(LoggedWithReadWriteHability, SingleContentFormViewMixin, FormW
         publishable.tags.clear()
         publishable.add_tags(form.cleaned_data['tags'].split(','))
 
-        publishable.helps.clear()
-        for help in form.cleaned_data['helps']:
-            publishable.helps.add(help)
+        # help can only be obtained on contents requiring validation before publication
+        if versioned.requires_validation_before():
+            publishable.helps.clear()
+            for help_ in form.cleaned_data['helps']:
+                publishable.helps.add(help_)
 
         publishable.save()
 
@@ -336,8 +371,10 @@ class DeleteContent(LoggedWithReadWriteHability, SingleContentViewMixin, DeleteV
         object_type = self.object.type.lower()
 
         _type = _(u'ce tutoriel')
-        if self.object.type == 'ARTICLE':
+        if self.object.is_article:
             _type = _(u'cet article')
+        elif self.object.is_opinion:
+            _type = _(u'ce billet')
 
         if self.object.authors.count() > 1:  # if more than one author, just remove author from list
             RemoveAuthorFromContent.remove_author(self.object, self.request.user)
@@ -826,12 +863,8 @@ class CreateContentFromArchive(LoggedWithReadWriteHability, FormView):
                 gal.save()
 
                 # Attach user to gallery
-                userg = UserGallery()
-                userg.gallery = gal
-                userg.mode = 'W'  # write mode
-                userg.user = self.request.user
-                userg.save()
                 self.object.gallery = gal
+                self.object.save()
 
                 # Add subcategories on tutorial
                 for subcat in form.cleaned_data['subcategory']:
@@ -840,7 +873,7 @@ class CreateContentFromArchive(LoggedWithReadWriteHability, FormView):
                 # We need to save the tutorial before changing its author list since it's a many-to-many relationship
                 self.object.authors.add(self.request.user)
                 self.object.save()
-
+                self.object.ensure_author_gallery()
                 # ok, now we can import
                 introduction = ''
                 conclusion = ''
@@ -867,8 +900,9 @@ class CreateContentFromArchive(LoggedWithReadWriteHability, FormView):
 
                 if not commit_message:
                     commit_message = _(u"Importation d'une archive contenant « {} »").format(new_content.title)
-
-                sha = versioned.commit_changes(commit_message)
+                versioned.slug = self.object.slug  # force slug to ensure path resolution
+                sha = versioned.repo_update(versioned.title, versioned.get_introduction(),
+                                            versioned.get_conclusion(), commit_message, update_slug=True)
 
                 # This HAVE TO happen after commiting files (if not, content are None)
                 if 'image_archive' in self.request.FILES:
@@ -1016,6 +1050,12 @@ class DisplayBetaContainer(DisplayContainer):
 
         return obj
 
+    def get_context_data(self, **kwargs):
+        context = super(DisplayBetaContainer, self).get_context_data(**kwargs)
+        context['helps'] = self.object.helps
+        context['pm_link'] = self.object.get_absolute_contact_url()
+        return context
+
 
 class EditContainer(LoggedWithReadWriteHability, SingleContentFormViewMixin, FormWithPreview):
     template_name = 'tutorialv2/edit/container.html'
@@ -1159,9 +1199,7 @@ class EditExtract(LoggedWithReadWriteHability, SingleContentFormViewMixin, FormW
                                   form.cleaned_data['msg_commit'])
 
         # then save
-        self.object.sha_draft = sha
-        self.object.update_date = datetime.now()
-        self.object.save()
+        self.object.update(sha_draft=sha, update_date=datetime.now())
 
         self.success_url = extract.get_absolute_url()
 
@@ -1192,9 +1230,7 @@ class DeleteContainerOrExtract(LoggedWithReadWriteHability, SingleContentViewMix
         sha = to_delete.repo_delete()
 
         # then save
-        self.object.sha_draft = sha
-        self.object.update_date = datetime.now()
-        self.object.save()
+        self.object.update(sha_draft=sha, update_date=datetime.now())
 
         return redirect(parent.get_absolute_url())
 
@@ -1335,6 +1371,8 @@ class ManageBetaContent(LoggedWithReadWriteHability, SingleContentFormViewMixin)
         _type = self.object.type.lower()
         if _type == 'tutorial':
             _type = _('tutoriel')
+        elif _type == 'opinion':
+            raise PermissionDenied
 
         # perform actions:
         if self.action == 'inactive':
@@ -1422,7 +1460,7 @@ class ManageBetaContent(LoggedWithReadWriteHability, SingleContentFormViewMixin)
                     topic.tags.add(tag)
                 topic.save()
 
-        self.object.save()
+        self.object.save(force_slug_update=False)  # we should prefer .update but it needs a uge refactoring
 
         self.success_url = self.versioned_object.get_absolute_url(version=sha_beta)
 
@@ -1487,9 +1525,16 @@ class WarnTypo(SingleContentFormViewMixin):
         else:  # send correction
             text = '\n'.join(['> ' + line for line in form.cleaned_data['text'].split('\n')])
 
-            _type = _(u"l'article")
-            if form.content.type == 'TUTORIAL':
+            _type = _(u'l\'article')
+            if form.content.is_tutorial:
                 _type = _(u'le tutoriel')
+            if form.content.is_opinion:
+                _type = _(u'le billet')
+
+            if form.content.get_tree_depth() == 0:
+                pm_title = _(u'J\'ai trouvé une faute dans {} « {} ».').format(_type, form.content.title)
+            else:
+                pm_title = _(u'J\'ai trouvé une faute dans le chapitre « {} ».').format(form.content.title)
 
             msg = render_to_string(
                 'tutorialv2/messages/warn_typo.md',
@@ -1503,7 +1548,7 @@ class WarnTypo(SingleContentFormViewMixin):
                 })
 
             # send it :
-            send_mp(user, authors, _(u'Proposition de correction'), form.content.title, msg, leave=False)
+            send_mp(user, authors, pm_title, '', msg, leave=False)
 
             messages.success(self.request, _(u'Merci pour votre proposition de correction.'))
 
@@ -1558,17 +1603,20 @@ class ContentsWithHelps(ZdSPagingListView):
 
 class ActivateJSFiddleInContent(LoginRequiredMixin, PermissionRequiredMixin, FormView):
     """Handles changes a validator or staff member can do on the js fiddle support of the provided content
-    Only those members can do it"""
+    Only these users can do it"""
 
     permissions = ['tutorialv2.change_publishablecontent']
     form_class = JsFiddleActivationForm
     http_method_names = ['post']
 
     def form_valid(self, form):
-        """Change the js fiddle support of content and redirect to the view page """
+        """Change the js fiddle support of content and redirect to the view page"""
+
         content = get_object_or_404(PublishableContent, pk=form.cleaned_data['pk'])
-        content.js_support = form.cleaned_data['js_support']
-        content.save()
+        # forbidden for content without a validation before publication
+        if not content.load_version().requires_validation_before():
+            raise PermissionDenied
+        content.update(js_support=form.cleaned_data['js_support'])
         return redirect(content.load_version().get_absolute_url())
 
 
@@ -1693,21 +1741,26 @@ class AddAuthorToContent(LoggedWithReadWriteHability, SingleContentFormViewMixin
     authorized_for_staff = True
     already_finished = False
 
-    def get(self):
+    def get(self, request, *args, **kwargs):
         content = self.get_object()
         url = 'content:find-{}'.format('tutorial' if content.is_tutorial() else content.type.lower())
         return redirect(url, self.request.user)
 
     def form_valid(self, form):
-        _type = self.object.type.lower()
-        if _type == 'tutorial':
+
+        _type = _(u"de l'article")
+
+        if self.object.is_tutorial:
             _type = _(u'du tutoriel')
-        else:
-            _type = _(u"de l'article")
+        elif self.object.is_opinion:
+            _type = _(u'du billet')
+
         bot = get_object_or_404(User, username=settings.ZDS_APP['member']['bot_account'])
+        all_authors_pk = [author.pk for author in self.object.authors.all()]
         for user in form.cleaned_data['users']:
-            if user not in self.object.authors.all() and user != self.request.user:
+            if user.pk not in all_authors_pk and user != self.request.user:
                 self.object.authors.add(user)
+                all_authors_pk.append(user.pk)
                 url_index = reverse('content:find-' + self.object.type.lower(), args=[user.pk])
                 send_mp(
                     bot,
@@ -1724,11 +1777,7 @@ class AddAuthorToContent(LoggedWithReadWriteHability, SingleContentFormViewMixin
                     True,
                     direct=False,
                 )
-                new_user = UserGallery()
-                new_user.gallery = self.object.gallery
-                new_user.user = user
-                new_user.mode = GALLERY_WRITE
-                new_user.save()
+                UserGallery(gallery=self.object.gallery, user=user, mode=GALLERY_WRITE).save()
         self.object.save()
         if not self.already_finished:
             self.success_url = self.object.get_absolute_url()
@@ -1773,8 +1822,10 @@ class RemoveAuthorFromContent(AddAuthorToContent):
         users = form.cleaned_data['users']
 
         _type = _(u'cet article')
-        if self.object.type == 'TUTORIAL':
+        if self.object.is_tutorial:
             _type = _(u'ce tutoriel')
+        elif self.object.is_opinion:
+            _type = _(u'ce billet')
 
         for user in users:
             if RemoveAuthorFromContent.remove_author(self.object, user):
@@ -1786,7 +1837,7 @@ class RemoveAuthorFromContent(AddAuthorToContent):
                                  u'en a déjà quitté la rédaction.').format(_type))
                 return redirect(self.object.get_absolute_url())
 
-        self.object.save()
+        self.object.save(force_slug_update=False)
 
         authors_list = u''
 
