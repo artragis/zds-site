@@ -392,17 +392,22 @@ class Comment(models.Model):
         self.text = text
         self.text_html = html
         self.save()
-        all_the_pings = list(filter(lambda user_name: user_name != self.author.username, metadata.get('ping', [])))
-        all_the_pings = list(set(all_the_pings) - set(old_metadata.get('ping', [])))
-        max_ping_count = settings.ZDS_APP['comment']['max_pings']
-        first_pings = all_the_pings[:max_ping_count]
-        for username in first_pings:
-            pinged_user = User.objects.filter(username=username).first()
-            if not pinged_user:
-                continue
+
+        def is_not_author(username):
+            return username != self.author.username
+
+        pinged_usernames_from_new_text = list(filter(is_not_author, metadata.get('ping', [])))
+        pinged_usernames_from_old_text = list(filter(is_not_author, old_metadata.get('ping', [])))
+
+        pinged_usernames = list(set(pinged_usernames_from_new_text) - set(pinged_usernames_from_old_text))
+        max_pings_allowed = settings.ZDS_APP['comment']['max_pings']
+        pinged_usernames = pinged_usernames[:max_pings_allowed]
+        pinged_users = User.objects.filter(username__in=pinged_usernames)
+        for pinged_user in pinged_users:
             signals.new_content.send(sender=self.__class__, instance=self, user=pinged_user)
-        unpinged_usernames = set(old_metadata.get('ping', [])) - set(all_the_pings)
-        unpinged_users = User.objects.filter(username__in=list(unpinged_usernames))
+
+        unpinged_usernames = list(set(pinged_usernames_from_old_text) - set(pinged_usernames_from_new_text))
+        unpinged_users = User.objects.filter(username__in=unpinged_usernames)
         for unpinged_user in unpinged_users:
             signals.unsubscribe.send(self.author, instance=self, user=unpinged_user)
 
