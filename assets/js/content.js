@@ -31,9 +31,7 @@
       if ($prev[0]) {
         return "after:" + path + $prev.attr("data-slug");
       } else {
-        return "before:" + path + $item.next().attr("data-slug");
-        // TODO : [BACK] Add support of beginning
-        // return "beginning:" + path;
+        return "first:" + path;
       }
     })($item.prev());
 
@@ -88,12 +86,6 @@
     if ($to.children(filter).length >= (1 + $to.is($from))) {
       return false;
     }
-
-    // TODO : [BACK] Add "beginning" moving_method
-    if (!$to.children(":not(.simple-create-button):not(.simple-create-part)")[0]) {
-      return false;
-    }
-
     return true;
   }
 
