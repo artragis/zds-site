@@ -1669,16 +1669,13 @@ class MoveChild(LoginRequiredMixin, SingleContentPostMixin, FormView):
                 logger.debug('{} was moved down in tutorial id:{}'.format(child_slug, content.pk))
             elif form.data['moving_method'][0:len(MoveElementForm.MOVE_FIRST)] == MoveElementForm.MOVE_FIRST:
                 target = form.data['moving_method'][len(MoveElementForm.MOVE_FIRST) + 1:]
-                if not parent.has_child_with_path(target):
-                    if '/' not in target:
-                        target_parent = versioned
-                    else:
-                        target_parent = search_container_or_404(versioned, '/'.join(target.split('/')[:-1]))
+                if '/' not in target:
+                    target_parent = versioned
+                else:
+                    target_parent = search_container_or_404(versioned, '/'.join(target.split('/')[:-1]))
+                if not target_parent.has_child_with_path(target):
 
-                        if target.split('/')[-1] not in target_parent.children_dict:
-                            raise Http404("La cible n'est pas un enfant du parent.")
-                    child = target_parent.children_dict[target.split('/')[-1]]
-                    try_adopt_new_child(target_parent, parent.children_dict[child_slug])
+                    try_adopt_new_child(target_parent, child, first=True)
                     # now, I will fix a bug that happens when the slug changes
                     # this one cost me so much of my hair
                     # and makes me think copy/past are killing kitty cat.
@@ -1695,13 +1692,13 @@ class MoveChild(LoginRequiredMixin, SingleContentPostMixin, FormView):
 
                         if target.split('/')[-1] not in target_parent.children_dict:
                             raise Http404("La cible n'est pas un enfant du parent.")
-                    child = target_parent.children_dict[target.split('/')[-1]]
+                    child = parent.children_dict[target.split('/')[-1]]
                     try_adopt_new_child(target_parent, parent.children_dict[child_slug])
                     # now, I will fix a bug that happens when the slug changes
                     # this one cost me so much of my hair
                     # and makes me think copy/past are killing kitty cat.
                     child_slug = target_parent.children[-1].slug
-                    parent = target_parent
+
                 parent.move_child_after(child_slug, target.split('/')[-1])
                 logger.debug('{} was moved after {} in tutorial id:{}'.format(child_slug, target, content.pk))
             elif form.data['moving_method'][0:len(MoveElementForm.MOVE_BEFORE)] == MoveElementForm.MOVE_BEFORE:

@@ -253,7 +253,7 @@ class Container:
                 return True
         return False
 
-    def add_container(self, container, generate_slug=False):
+    def add_container(self, container, generate_slug=False, first=False):
         """Add a child Container, but only if no extract were previously added
         and tree depth is lower than 2.
 
@@ -264,6 +264,7 @@ class Container:
 
         :param container: the new container
         :param generate_slug: if ``True``, asks the top container a unique slug for this object
+        :param first: if ``True`` prepend child instead of appending it
         :raises InvalidOperationError: if the new container cannot be added. Please use\
         ``can_add_container`` first to make sure you can use ``add_container``.
         """
@@ -274,16 +275,20 @@ class Container:
                 self.__add_slug_to_pool(container.slug)
             container.parent = self
             container.position_in_parent = self.get_last_child_position() + 1
-            self.children.append(container)
+            if first:
+                self.children = [container] + self.children
+            else:
+                self.children.append(container)
             self.children_dict[container.slug] = container
         else:
             raise InvalidOperationError(_("Impossible d'ajouter un conteneur au conteneur « {} »").format(self.title))
 
-    def add_extract(self, extract, generate_slug=False):
+    def add_extract(self, extract, generate_slug=False, first=False):
         """Add a child container, but only if no container were previously added
 
         :param extract: the new extract
         :param generate_slug: if ``True``, ask the top container a unique slug for this object
+        :param first: if ``True`` prepend child instead of appending it
         :raise InvalidOperationError: if the extract can't be added to this container.
         """
         if self.can_add_extract():
@@ -293,7 +298,10 @@ class Container:
                 self.__add_slug_to_pool(extract.slug)
             extract.container = self
             extract.position_in_parent = self.get_last_child_position() + 1
-            self.children.append(extract)
+            if first:
+                self.children = [extract] + self.children
+            else:
+                self.children.append(extract)
             self.children_dict[extract.slug] = extract
         else:
             raise InvalidOperationError(_("Impossible d'ajouter un extrait au conteneur « {} »").format(self.title))
@@ -1378,7 +1386,7 @@ class VersionedContent(Container, TemplatableContentModelMixin):
 
         return cm.hexsha
 
-    def change_child_directory(self, child, adoptive_parent):
+    def change_child_directory(self, child, adoptive_parent, first=False):
         """Move an element of this content to a new location.
         This method changes the repository index and stage every change but does **not** commit.
 
@@ -1390,11 +1398,11 @@ class VersionedContent(Container, TemplatableContentModelMixin):
         if isinstance(child, Extract):
             old_parent = child.container
             old_parent.children = [c for c in old_parent.children if c.slug != child.slug]
-            adoptive_parent.add_extract(child, True)
+            adoptive_parent.add_extract(child, True, first=first)
         else:
             old_parent = child.parent
             old_parent.children = [c for c in old_parent.children if c.slug != child.slug]
-            adoptive_parent.add_container(child, True)
+            adoptive_parent.add_container(child, True, first=first)
         self.repository.index.move([old_path, child.get_path(False)])
         old_parent.update_children()
         adoptive_parent.update_children()

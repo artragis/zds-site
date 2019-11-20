@@ -174,10 +174,11 @@ class TooDeepContainerError(ValueError):
         super(TooDeepContainerError, self).__init__(*args, **kwargs)
 
 
-def try_adopt_new_child(adoptive_parent, child):
+def try_adopt_new_child(adoptive_parent, child, first=False):
     """Try the adoptive parent to take the responsability of the child
     :param adoptive_parent: the new parent for child if all check pass
     :param child: content child to be moved
+    :param first: if ``True`` prepend child instead of appending it
     :raise Http404: if adoptive_parent_full_path is not found on root hierarchy
     :raise TypeError: if the adoptive parent is not allowed to adopt the child due to its type
     :raise TooDeepContainerError: if the child is a container that is too deep to be adopted by the proposed parent
@@ -197,7 +198,7 @@ def try_adopt_new_child(adoptive_parent, child):
             if child.can_add_container():  # if the child is a part with empty chapters
                 # that we move inside another part
                 raise TooDeepContainerError
-    adoptive_parent.top_container().change_child_directory(child, adoptive_parent)
+    adoptive_parent.top_container().change_child_directory(child, adoptive_parent, first=first)
 
 
 def get_target_tagged_tree(movable_child, root):
