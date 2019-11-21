@@ -1692,12 +1692,13 @@ class MoveChild(LoginRequiredMixin, SingleContentPostMixin, FormView):
 
                         if target.split('/')[-1] not in target_parent.children_dict:
                             raise Http404("La cible n'est pas un enfant du parent.")
-                    child = parent.children_dict[target.split('/')[-1]]
+                    child = target_parent.children_dict[target.split('/')[-1]]
                     try_adopt_new_child(target_parent, parent.children_dict[child_slug])
                     # now, I will fix a bug that happens when the slug changes
                     # this one cost me so much of my hair
                     # and makes me think copy/past are killing kitty cat.
                     child_slug = target_parent.children[-1].slug
+                    parent = target_parent
 
                 parent.move_child_after(child_slug, target.split('/')[-1])
                 logger.debug('{} was moved after {} in tutorial id:{}'.format(child_slug, target, content.pk))
