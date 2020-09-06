@@ -26,3 +26,9 @@ $color-not-ready-content: #D0D0D0;
 $color-badge-sanction: #b71c1c;
 
 $color-question-marks: desaturate(lighten($color-primary, 24%), 40%);
+
+// Official brand colors
+$color-brand-facebook: hsl(214, 89%, 52%);
+$color-brand-facebook-hover: hsl(214, 89%, 32%);
+$color-brand-google: hsl(217, 89%, 61%);
+$color-brand-google-hover: hsl(217, 89%, 31%);
