@@ -398,6 +398,7 @@ def get_content_from_json(json, sha, slug_last_draft, public=False, max_title_le
             extract = Extract("text", "")
             if "text" in json:
                 extract.text = json["text"]  # probably 'text.md' !
+            extract.is_quizz = json.get("is_quizz", False)
             versioned.add_extract(extract, generate_slug=True)
 
         else:  # it's a tutorial
@@ -409,6 +410,7 @@ def get_content_from_json(json, sha, slug_last_draft, public=False, max_title_le
                     )
                     if "text" in extract:
                         new_extract.text = extract["text"]
+                    new_extract.is_quizz = extract.get("is_quizz", False)
                     versioned.add_extract(new_extract, generate_slug=False)
 
             elif json["type"] == "BIG" and "parts" in json:
@@ -445,6 +447,7 @@ def get_content_from_json(json, sha, slug_last_draft, public=False, max_title_le
 
                                     if "text" in extract:
                                         new_extract.text = extract["text"]
+                                    new_extract.is_quizz = extract.get("is_quizz", False)
                                     new_chapter.add_extract(new_extract, generate_slug=False)
 
     return versioned
@@ -567,7 +570,7 @@ def fill_containers_from_json(json_sub, parent):
                 except KeyError:
                     pass
                 new_extract = Extract(child["title"], slug)
-
+                new_extract.is_quizz = child.get("is_quizz", False)
                 if "text" in child:
                     new_extract.text = child["text"]
                 try:
@@ -685,7 +688,7 @@ def export_extract(extract):
     dct["object"] = "extract"
     dct["slug"] = extract.slug
     dct["title"] = extract.title
-
+    dct["is_quizz"] = extract.is_quizz
     if extract.text:
         dct["text"] = extract.text
 
