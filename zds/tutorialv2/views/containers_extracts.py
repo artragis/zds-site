@@ -195,6 +195,7 @@ class CreateExtract(LoggedWithReadWriteHability, SingleContentFormViewMixin, For
     form_class = ExtractForm
     content = None
     authorized_for_staff = True
+    quizz = False
 
     def get_context_data(self, **kwargs):
         context = super(CreateExtract, self).get_context_data(**kwargs)
@@ -215,7 +216,8 @@ class CreateExtract(LoggedWithReadWriteHability, SingleContentFormViewMixin, For
         parent = search_container_or_404(self.versioned_object, self.kwargs)
 
         sha = parent.repo_add_extract(
-            form.cleaned_data["title"], form.cleaned_data["text"], form.cleaned_data["msg_commit"]
+            form.cleaned_data["title"], form.cleaned_data["text"], form.cleaned_data["msg_commit"],
+            quizz=self.quizz
         )
 
         # then save

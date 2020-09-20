@@ -114,12 +114,21 @@ urlpatterns = [
         CreateExtract.as_view(),
         name="create-extract",
     ),
+    re_path(r'^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/(?P<parent_container_slug>.+)/(?P<container_slug>.+)/$',
+            CreateExtract.as_view(quizz=True),
+            name='create-quizz'),
     re_path(
         r"^nouvelle-section/(?P<pk>\d+)/(?P<slug>.+)/(?P<container_slug>.+)/$",
         CreateExtract.as_view(),
         name="create-extract",
     ),
+    re_path(r'^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/(?P<container_slug>.+)/$',
+            CreateExtract.as_view(quizz=True),
+            name='create-quizz'),
     re_path(r"^nouvelle-section/(?P<pk>\d+)/(?P<slug>.+)/$", CreateExtract.as_view(), name="create-extract"),
+    re_path(r'^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/$',
+            CreateExtract.as_view(quizz=True),
+            name='create-quizz'),
     # edit:
     re_path(
         r"^editer-conteneur/(?P<pk>\d+)/(?P<slug>.+)/(?P<parent_container_slug>.+)/" r"(?P<container_slug>.+)/$",
