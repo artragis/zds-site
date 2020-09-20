@@ -452,6 +452,12 @@ li.task-list-item {
         position: absolute;
         left: -20px;
     }
+    &.quizz-forget {
+            font-weight: bolder;
+        }
+    &.quizz-bad {
+        color: $color-danger;
+    }
 }
 
 .warn-typo {
