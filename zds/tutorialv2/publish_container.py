@@ -9,11 +9,12 @@ import copy
 from django.template.loader import render_to_string
 from django.utils.translation import ugettext_lazy as _
 
+from zds.tutorialv2.models.database import PublishedContent, PublishableContent
 from zds.utils.templatetags.emarkdown import emarkdown
 
 
 def publish_container(
-    db_object,
+    db_object: PublishableContent,
     base_dir,
     container,
     template="tutorialv2/export/chapter.html",
@@ -41,6 +42,8 @@ def publish_container(
 
     path_to_title_dict = collections.OrderedDict()
     ctx["relative"] = ctx.get("relative", ".")
+    ctx["content"] = db_object
+    ctx["public_content"] = db_object.public_version
     if not isinstance(container, Container):
         raise FailureDuringPublication(_("Le conteneur n'en est pas un !"))
 

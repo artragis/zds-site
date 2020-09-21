@@ -29,7 +29,7 @@ from zds.tutorialv2.views.editorialization import RemoveSuggestion, AddSuggestio
 from zds.tutorialv2.views.lists import TagsListView, ContentOfAuthor, ListContentReactions
 from zds.tutorialv2.views.alerts import SendContentAlert, SolveContentAlert
 from zds.tutorialv2.views.misc import RequestFeaturedContent, FollowNewContent, WarnTypo
-from zds.tutorialv2.views.statistics import ContentStatisticsView
+from zds.tutorialv2.views.statistics import ContentStatisticsView, ContentQuizzStatistics
 from zds.tutorialv2.views.comments import (
     SendNoteFormView,
     UpdateNoteView,
@@ -200,4 +200,7 @@ urlpatterns = [
     # tags
     re_path(r"^tags/$", TagsListView.as_view(), name="tags"),
     re_path(r"^$", RedirectView.as_view(pattern_name="publication:list", permanent=True), name="list"),
+    # quizz
+    re_path(r"^reponses/(?P<pk>\d+)/(?P<slug>.+)/$", ContentQuizzStatistics.as_view(),
+            name="answer-quizz"),
 ]

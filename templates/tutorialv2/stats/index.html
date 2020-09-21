@@ -47,6 +47,7 @@
             <span class="tablinks" tabindex="0" id="tab-users-graph">{% trans "Nombre de visiteurs" %}</span>
             <span class="tablinks" tabindex="0" id="tab-new-users-graph">{% trans "Nombre de nouveaux visiteurs" %}</span>
             <span class="tablinks" tabindex="0" id="tab-sessions-graph">{% trans "Nombre de sessions" %}</span>
+            <span class="tablinks" tabindex="0" id="tab-quizz">{% trans "Quizz" %}</span>
         </div>
         <!-- Tab content -->
         {% include "misc/graph.part.html" with tab_name="tab-view-graph-content" graph_title="Évolution des pages vues sur le contenu" canvas_id="view-graph" metric="pageviews" %}
@@ -54,6 +55,7 @@
         {% include "misc/graph.part.html" with tab_name="tab-users-graph-content" graph_title="Évolution du nombre de visiteurs" canvas_id="users-graph" metric="users" %}
         {% include "misc/graph.part.html" with tab_name="tab-new-users-graph-content" graph_title="Évolution du nombre de nouveaux visiteurs" canvas_id="new-users-graph" metric="newUsers" %}
         {% include "misc/graph.part.html" with tab_name="tab-sessions-graph-content" graph_title="Évolution du nombre de sessions" canvas_id="sessions-graph" metric="sessions" %}
+        {% include "misc/graph.part.html" with tab_name="tab-quizz-content" graph_title="Réponses au quizz" canvas_id="quizz-graph" metric="quizz" %}
 
 
         {% if cumulative_stats_by_url %}
