@@ -41,12 +41,35 @@
     t = v * (1 - s * (1 - f))
 
     switch (i) {
-      case 0: r = v; g = t; b = p; break
-      case 1: r = q; g = v; b = p; break
-      case 2: r = p; g = v; b = t; break
-      case 3: r = p; g = q; b = v; break
-      case 4: r = t; g = p; b = v; break
-      default: r = v; g = p; b = q
+      case 0:
+        r = v
+        g = t
+        b = p
+        break
+      case 1:
+        r = q
+        g = v
+        b = p
+        break
+      case 2:
+        r = p
+        g = v
+        b = t
+        break
+      case 3:
+        r = p
+        g = q
+        b = v
+        break
+      case 4:
+        r = t
+        g = p
+        b = v
+        break
+      default:
+        r = v
+        g = p
+        b = q
     }
 
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)]
@@ -77,7 +100,38 @@
     responsive: true
   }
 
-  var charts = []
+  const charts = []
+
+  function setupPie($objects) {
+    $objects.each((_, object) => {
+      const $object = $(object)
+      const labels = $object.data('label')
+      const data = $object.data('values')
+      const nbColors = labels.length
+      const allColors = []
+      let n = 0
+      for (let i = 0; i < nbColors; i++) {
+        const color = hsvToRgb(n, 100, 80)
+        allColors.push(`rgb(${color[0]}, ${color[1]}, ${color[2]})`)
+        n += 360 / nbColors
+      }
+      console.log(allColors)
+      const config = {
+        type: 'pie',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: 'Réponse',
+            data: data,
+            backgroundColor: allColors
+          }]
+        },
+        options: basicOptions
+      }
+      charts.push(new window.Chart($object, config))
+    })
+  }
+
   function setupChart($object, formatter) {
     var $dataX = $object.data('time')
     var times = []
@@ -95,7 +149,7 @@
       }
     }
     var n = 0
-    for (var o in allObjectData) {
+    for (const o in allObjectData) {
       if (o.indexOf('views') > -1) {
         var label = $object.data('label-' + o)
         var color = hsvToRgb(n, 100, 80)
@@ -167,7 +221,12 @@
     if ($('#sessions-graph').length) {
       setupChart($('#sessions-graph'))
     }
+    const quizzCharts = $('.quizz-chart')
+    if (quizzCharts.length) {
+      setupPie(quizzCharts)
+    }
   }
+
   drawCharts()
 
   // Tab management
