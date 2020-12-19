@@ -370,7 +370,24 @@ class ContentStatisticsView(SingleOnlineContentDetailViewMixin, FormView):
         urls = self.get_urls_to_render()
         start_date, end_date = self.get_start_and_end_dates()
         display_mode = self.get_display_mode(urls)
+        # view stats
         all_stats = self.get_all_stats(urls, start_date, end_date, display_mode)
+        # quizz stats
+        quizz_stats = self.build_quizz_stats(end_date, start_date)
+        context.update(
+            {
+                "display": display_mode,
+                "urls": urls,
+                "stats": all_stats[0],  # Graph
+                "cumulative_stats_by_url": all_stats[1],  # Table data
+                "referrers": all_stats[2],
+                "keywords": all_stats[3],
+                "quizz": quizz_stats,
+            }
+        )
+        return context
+
+    def build_quizz_stats(self, end_date, start_date):
         quizz_stats = {}
         base_questions = list(
             QuizzUserAnswer.objects.filter(
@@ -390,7 +407,6 @@ class ContentStatisticsView(SingleOnlineContentDetailViewMixin, FormView):
             .filter(related_question__in=base_questions, date_answer__range=(start_date, end_date))
             .annotate(nb=Count("answer"))
         )
-
         for base_question in set(base_questions):
             full_answers_total = {}
             url = ""
@@ -412,15 +428,4 @@ class ContentStatisticsView(SingleOnlineContentDetailViewMixin, FormView):
             if url not in quizz_stats:
                 quizz_stats[url] = OrderedDict()
             quizz_stats[url][question] = {"total": total_per_question[base_question], "responses": full_answers_total}
-        context.update(
-            {
-                "display": display_mode,
-                "urls": urls,
-                "stats": all_stats[0],  # Graph
-                "cumulative_stats_by_url": all_stats[1],  # Table data
-                "referrers": all_stats[2],
-                "keywords": all_stats[3],
-                "quizz": quizz_stats,
-            }
-        )
-        return context
+        return quizz_stats
