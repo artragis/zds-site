@@ -114,21 +114,23 @@ urlpatterns = [
         CreateExtract.as_view(),
         name="create-extract",
     ),
-    re_path(r'^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/(?P<parent_container_slug>.+)/(?P<container_slug>.+)/$',
-            CreateExtract.as_view(quizz=True),
-            name='create-quizz'),
+    re_path(
+        r"^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/(?P<parent_container_slug>.+)/(?P<container_slug>.+)/$",
+        CreateExtract.as_view(quizz=True),
+        name="create-quizz",
+    ),
     re_path(
         r"^nouvelle-section/(?P<pk>\d+)/(?P<slug>.+)/(?P<container_slug>.+)/$",
         CreateExtract.as_view(),
         name="create-extract",
     ),
-    re_path(r'^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/(?P<container_slug>.+)/$',
-            CreateExtract.as_view(quizz=True),
-            name='create-quizz'),
+    re_path(
+        r"^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/(?P<container_slug>.+)/$",
+        CreateExtract.as_view(quizz=True),
+        name="create-quizz",
+    ),
     re_path(r"^nouvelle-section/(?P<pk>\d+)/(?P<slug>.+)/$", CreateExtract.as_view(), name="create-extract"),
-    re_path(r'^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/$',
-            CreateExtract.as_view(quizz=True),
-            name='create-quizz'),
+    re_path(r"^nouveau-quizz/(?P<pk>\d+)/(?P<slug>.+)/$", CreateExtract.as_view(quizz=True), name="create-quizz"),
     # edit:
     re_path(
         r"^editer-conteneur/(?P<pk>\d+)/(?P<slug>.+)/(?P<parent_container_slug>.+)/" r"(?P<container_slug>.+)/$",
@@ -201,6 +203,5 @@ urlpatterns = [
     re_path(r"^tags/$", TagsListView.as_view(), name="tags"),
     re_path(r"^$", RedirectView.as_view(pattern_name="publication:list", permanent=True), name="list"),
     # quizz
-    re_path(r"^reponses/(?P<pk>\d+)/(?P<slug>.+)/$", ContentQuizzStatistics.as_view(),
-            name="answer-quizz"),
+    re_path(r"^reponses/(?P<pk>\d+)/(?P<slug>.+)/$", ContentQuizzStatistics.as_view(), name="answer-quizz"),
 ]
