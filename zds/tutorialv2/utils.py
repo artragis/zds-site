@@ -736,7 +736,7 @@ def export_content(content):
     dct = export_container(content)
 
     # append metadata :
-    dct["version"] = 2.1
+    dct["version"] = 2.2
     dct["description"] = content.description
     dct["type"] = content.type
     if content.licence:

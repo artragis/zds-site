@@ -10,10 +10,12 @@
         {% for question, stats in questions.items %}
             <article class="stat-graph">
             <h4>{% trans graph_title %} {{ question }}</h4>
-            <ul>
+            <ul class="quizz-answers">
                 {% for answer_name, answer_stats in stats.responses.items %}
-                    <li class="{% if answer_stats.good %}quizz-forget{% endif %}">{{ answer_name }}
-                        <progress aria-label="{% trans 'Résultat pour' %} {{ answer_name }}" max="{{ stats.total }}" value="{{ answer_stats.nb }}"/>
+                    <li class="{% if answer_stats.good %}quizz-forget{% endif %} quizz-stats">
+                        <span>{{ answer_name }}</span>
+                        <span><progress aria-label="{% trans 'Résultat pour' %} {{ answer_name }}" max="{{ stats.total }}" value="{{ answer_stats.nb }}"/>
+                            <span class="over-progress">{{answer_stats.nb}}</span></span>
                     </li>
                 {% endfor %}
             </ul>

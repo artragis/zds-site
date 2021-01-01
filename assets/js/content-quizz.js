@@ -43,13 +43,10 @@ function computeForm(formdata, answers) {
     const name = entry[0]
     const values = parseInt(entry[1], 10)
     if (!answers[name]) {
-      console.log('not found ' + name)
       continue
     } else {
-      console.log(name + ' ' + values + ' : ' + answers[name][values])
-      // for poc we assume we only deal with lists
+      // first version of quizz only deal with lists
       if (!answers[name][values]) {
-        console.log('bad answer ' + name + ' ' + values)
         badAnswers.push({
           name: name,
           value: values
@@ -74,7 +71,10 @@ function markBadAnswers(names, answers) {
     })
     document.querySelector(`.custom-block[data-name=${name}]`).classList.add('quizz-bad')
   })
-  names.forEach(({ name, value }) => {
+  names.forEach(({
+    name,
+    value
+  }) => {
     document.querySelector(`input[type=checkbox][name="${name}"][value="${value}"]`)
       .parentElement.classList.add('quizz-bad')
   })
@@ -103,11 +103,8 @@ document.querySelectorAll('form.quizz').forEach(form => {
     }
     Object.keys(answers).forEach(name => {
       const element = document.querySelector(`.custom-block[data-name="${name}"]`)
-      let title = element.querySelector('.custom-block-heading').textContent
-      const correction = element.querySelector('.custom-block-heading+div')
-      if (correction) {
-        title = title.substr(0, title.indexOf(correction.textContent))
-      }
+      const title = element.querySelector('.custom-block-heading').textContent
+      const correction = element.querySelector('.custom-block .custom-block-heading')
       statistics.result[title] = {
         evaluation: 'bad',
         labels: []
@@ -115,11 +112,15 @@ document.querySelectorAll('form.quizz').forEach(form => {
       statistics.expected[title] = {}
       const availableResponses = element.querySelectorAll('input')
       for (let i = 0; i < availableResponses.length; i++) {
-        statistics.expected[title][availableResponses[i].parentElement.textContent] = answers[name][i]
+        let responseText = availableResponses[i].parentElement.textContent
+        if (i === availableResponses.length - 1 && correction && responseText.indexOf(correction.textContent) !== -1) {
+          responseText = responseText.substr(0, responseText.indexOf(correction.textContent))
+        }
+        statistics.expected[title][responseText] = answers[name][i]
       }
       element.querySelectorAll('input:checked')
         .forEach(node => statistics.result[title].labels.push(node.parentElement.textContent.trim()))
-      if (!element.classList.contains('quizz-bad')) {
+      if (!element.classList.contains('quizz-bad') && !element.classList.contains('quizz-forget')) {
         element.classList.add('quizz-good')
         statistics.result[title].evaluation = 'ok'
       }
@@ -132,7 +133,5 @@ document.querySelectorAll('form.quizz').forEach(form => {
     xhttp.setRequestHeader('X-CSRFToken', csrfmiddlewaretoken)
     statistics.url = form.parentElement.previousElementSibling.firstElementChild.href
     xhttp.send(JSON.stringify(statistics))
-    // here send result
-    console.log(result)
   })
 })

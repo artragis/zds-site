@@ -1,12 +1,13 @@
 import uuid
 from collections import defaultdict, OrderedDict, Counter
 from datetime import timedelta, datetime, date
-from json import loads
+from json import loads, dumps
 
 from django.conf import settings
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.db.models import Count
+from django.http import StreamingHttpResponse
 from django.utils.translation import ugettext_lazy as _
 from django.views.generic import FormView
 
@@ -26,7 +27,7 @@ class ContentQuizzStatistics(SingleOnlineContentFormViewMixin):
 
     def post(self, request, *args, **kwargs):
         request.POST = loads(request.body)
-        super(ContentQuizzStatistics, self).post(request, *args, **kwargs)
+        return super(ContentQuizzStatistics, self).post(request, *args, **kwargs)
 
     def form_valid(self, form):
         url = form.cleaned_data["url"]
@@ -35,7 +36,7 @@ class ContentQuizzStatistics(SingleOnlineContentFormViewMixin):
         for question, answers in answers.items():
             db_question = QuizzQuestion.objects.filter(question=question, url=url).first()
             if not db_question:
-                db_question = QuizzQuestion(question=question, url=url)
+                db_question = QuizzQuestion(question=question, url=url, question_type="qcm")
                 db_question.save()
             given_available_answers = self.request.POST["expected"][question]
             answers_labels = list(given_available_answers.keys())
@@ -55,8 +56,7 @@ class ContentQuizzStatistics(SingleOnlineContentFormViewMixin):
                     related_content=self.object, related_question=db_question, full_answer_id=resp_id, answer=answer
                 )
                 stat.save()
-        self.success_url = self.object.get_absolute_url_online()
-        return super(ContentQuizzStatistics, self).form_valid(form)
+        return StreamingHttpResponse(dumps({"status": "ok"}))
 
 
 class ContentStatisticsView(SingleOnlineContentDetailViewMixin, FormView):
@@ -395,11 +395,11 @@ class ContentStatisticsView(SingleOnlineContentDetailViewMixin, FormView):
             ).values_list("related_question", flat=True)
         )
         total_per_question = list(
-            QuizzUserAnswer.objects.values("related_question__pk")
+            QuizzUserAnswer.objects.values("related_question__pk", "full_answer_id")
             .filter(related_question__pk__in=base_questions, date_answer__range=(start_date, end_date))
             .annotate(nb=Count("full_answer_id"))
         )
-        total_per_question = {a["related_question__pk"]: a["nb"] for a in total_per_question}
+        total_per_question = Counter([a["related_question__pk"] for a in total_per_question])
         total_per_label = list(
             QuizzUserAnswer.objects.values(
                 "related_question__pk", "related_question__question", "related_question__url", "answer"

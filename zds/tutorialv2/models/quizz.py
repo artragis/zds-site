@@ -6,6 +6,18 @@ from zds.tutorialv2.models.database import PublishableContent
 class QuizzQuestion(models.Model):
     url = models.TextField(name="url", verbose_name="url", null=False, blank=False)
     question = models.TextField(name="question", verbose_name="question", null=False, blank=False)
+    # use max_length 15 to help with indexation, question type must not be too verbose. You may want to implement
+    # choices later
+    question_type = models.TextField(
+        name="question_type",
+        verbose_name="Type de question",
+        null=False,
+        blank=False,
+        default="qcm",
+        db_index=True,
+        editable=False,
+        max_length=15,
+    )
 
 
 class QuizzAvailableAnswer(models.Model):
