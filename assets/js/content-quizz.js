@@ -16,8 +16,6 @@ function extractAnswer(radio, answers) {
     } else {
       answers[rb.parentNode.parentNode.getAttribute('id')].push(rb.checked)
     }
-    console.log(index - 1)
-    console.log(rb.checked)
     rb.setAttribute('value', answers[rb.parentNode.parentNode.getAttribute('id')].length - 1)
     rb.disabled = false
     rb.checked = false
@@ -59,6 +57,21 @@ function computeForm(formdata, answers) {
 
 function markBadAnswers(names, answers) {
   const toAdd = []
+  if (names.length === 0) {
+    Object.keys(answers).forEach(answer => {
+      let mustMarkBad = false;
+      answers[answer].forEach((value, index) => {
+        const inputAnswer = document.querySelector(`#${answer} input[value="${index}"]`)
+        if (value && !inputAnswer.checked) {
+          inputAnswer.parentElement.classList.add('quizz-forget')
+          mustMarkBad = true
+        }
+      })
+      if (mustMarkBad) {
+        document.querySelector(`div[data-name="${answer}"]`).classList.add('quizz-bad')
+      }
+    })
+  }
   names.forEach(({ name }) => {
     document.querySelectorAll('input[name="' + name + '"]').forEach(field => {
       if (answers[name][parseInt(field.getAttribute('value'), 10)] && !field.checked) {

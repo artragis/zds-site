@@ -123,6 +123,9 @@ h6 {
             display: block;
             border: solid 1px $grey-600;
         }
+        li.quizz-forget .custom-block .custom-block-body {
+            font-weight: normal;
+        }
     }
     &.quizz-good {
         display: block;
@@ -132,9 +135,9 @@ h6 {
         .custom-block {
             display: block;
             border: solid 1px $grey-600;
-            .custom-block-body {
-                font-weight: normal;
-            }
+        }
+        li.quizz-forget .custom-block .custom-block-body {
+            font-weight: normal;
         }
     }
 
