@@ -104,7 +104,8 @@ document.querySelectorAll('form.quizz').forEach(form => {
     Object.keys(answers).forEach(name => {
       const element = document.querySelector(`.custom-block[data-name="${name}"]`)
       const title = element.querySelector('.custom-block-heading').textContent
-      const correction = element.querySelector('.custom-block .custom-block-heading')
+      const correction = element.querySelector('.custom-block .custom-block .custom-block-heading')
+
       statistics.result[title] = {
         evaluation: 'bad',
         labels: []
@@ -119,7 +120,13 @@ document.querySelectorAll('form.quizz').forEach(form => {
         statistics.expected[title][responseText] = answers[name][i]
       }
       element.querySelectorAll('input:checked')
-        .forEach(node => statistics.result[title].labels.push(node.parentElement.textContent.trim()))
+        .forEach(node => {
+          let label = node.parentElement.textContent
+          if (correction && label.indexOf(correction.textContent) !== -1) {
+            label = label.substr(0, label.indexOf(correction.textContent))
+          }
+          statistics.result[title].labels.push(label.trim())
+        })
       if (!element.classList.contains('quizz-bad') && !element.classList.contains('quizz-forget')) {
         element.classList.add('quizz-good')
         statistics.result[title].evaluation = 'ok'
@@ -133,5 +140,6 @@ document.querySelectorAll('form.quizz').forEach(form => {
     xhttp.setRequestHeader('X-CSRFToken', csrfmiddlewaretoken)
     statistics.url = form.parentElement.previousElementSibling.firstElementChild.href
     xhttp.send(JSON.stringify(statistics))
+    console.log(statistics)
   })
 })

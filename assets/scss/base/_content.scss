@@ -110,19 +110,31 @@ h6 {
 
 
 .quizz .custom-block {
+
     .custom-block {
         display: none;
     }
     &.quizz-bad {
-        background-color: $color-danger !important;
+        display: block;
+        & .custom-block-body {
+            background-color: $accent-500 ;
+        }
         .custom-block {
             display: block;
+            border: solid 1px $grey-600;
         }
     }
     &.quizz-good {
-         background:$color-success !important;
+        display: block;
+        & .custom-block-body{
+            background: $green-500;
+        }
         .custom-block {
             display: block;
+            border: solid 1px $grey-600;
+            .custom-block-body {
+                font-weight: normal;
+            }
         }
     }
 
@@ -607,19 +619,7 @@ li.task-list-item {
         font-weight: bolder;
     }
 }
-.stat-graph ul.quizz-answers {
-    max-width: 50%;
-    li.quizz-stats {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        grid-gap: 1px;
-        .over-progress {
-            display: block;
-            position: relative;
-            left: -50%;
-        }
-    }
-}
+
 
 .warn-typo {
     height: $length-20;
