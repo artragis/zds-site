@@ -22,15 +22,15 @@ function extractAnswer(radio, answers) {
   })
 }
 
-function initializeCheckboxes(answers) {
+function initializeCheckboxes(answers, blockIds) {
   const checkboxes = document.querySelectorAll('.quizz ul li input[type=checkbox]')
-  extractAnswer(checkboxes, answers)
+  extractAnswer(checkboxes, answers, blockIds)
 }
 
 
-function initializeRadio(answers) {
+function initializeRadio(answers, blockIds) {
   const radio = document.querySelectorAll('.quizz ul li input[type=radio]')
-  extractAnswer(radio, answers)
+  extractAnswer(radio, answers, blockIds)
 }
 
 const initializePipeline = [initializeCheckboxes, initializeRadio]
@@ -59,7 +59,7 @@ function markBadAnswers(names, answers) {
   const toAdd = []
   if (names.length === 0) {
     Object.keys(answers).forEach(answer => {
-      let mustMarkBad = false;
+      let mustMarkBad = false
       answers[answer].forEach((value, index) => {
         const inputAnswer = document.querySelector(`#${answer} input[value="${index}"]`)
         if (value && !inputAnswer.checked) {
@@ -94,8 +94,79 @@ function markBadAnswers(names, answers) {
   toAdd.forEach(name => names.push(name))
 }
 
+function getWantedHeading(questionNode, nodeName, attr) {
+  let potentialHeading = questionNode
+  while (potentialHeading[attr] &&
+  potentialHeading.nodeName !== nodeName.toUpperCase()) {
+    potentialHeading = potentialHeading[attr]
+  }
+  if (potentialHeading.nodeName !== nodeName.toUpperCase()) {
+    return null
+  }
+  return potentialHeading
+}
+
+function injectForms(quizz, answers) {
+  const searchedTitle = quizz.getAttribute('data-heading-level') || 'h3'
+  const submitLabel = quizz.getAttribute('data-quizz-validate') || 'Validate'
+  const headings = {}
+  let idBias = 0
+  Object.keys(answers).forEach(blockId => {
+    const questionNode = document.getElementById(blockId).parentElement.parentElement
+    const heading = getWantedHeading(questionNode, searchedTitle, 'previousSibling') || quizz
+    if (!heading.getAttribute('id')) {
+      console.log('new id')
+      heading.setAttribute('id', `quizz-form-${idBias}`)
+      idBias++
+    }
+    console.log(headings)
+    console.log(heading.getAttribute('id'))
+    if (heading && !headings[heading.getAttribute('id')]) {
+      headings[heading.getAttribute('id')] = true
+      const form = document.createElement('form')
+      form.classList.add('quizz')
+      quizz.appendChild(form)
+
+      const submit = document.createElement('button')
+      submit.innerText = submitLabel
+      submit.classList.add('btn-submit')
+      submit.classList.add('btn')
+      const result = document.createElement('p')
+      result.classList.add('result')
+     let nodeToAddToForm = heading
+      if (heading === quizz) {
+        nodeToAddToForm = quizz.firstChild
+        nodeToAddToForm.parentNode.removeChild(nodeToAddToForm)
+        form.appendChild(nodeToAddToForm)
+      } else {
+        nodeToAddToForm = heading.nextSibling
+      }
+      form.method = 'POST'
+      form.setAttribute('action', quizz.getAttribute('data-answer-url'))
+
+      while (nodeToAddToForm && nodeToAddToForm.nodeName !== searchedTitle.toUpperCase()) {
+        const current = nodeToAddToForm
+        nodeToAddToForm = nodeToAddToForm.nextSibling
+        form.appendChild(current.cloneNode(true))
+        current.parentNode.removeChild(current)
+      }
+      form.appendChild(result)
+      form.appendChild(submit)
+      console.log('append form')
+      if (heading === quizz) {
+        quizz.appendChild(form)
+      } else {
+        quizz.insertBefore(form, heading.nextSibling)
+      }
+    }
+  })
+}
+
 const answers = {}
 initializePipeline.forEach(func => func(answers))
+document.querySelectorAll('div.quizz').forEach(div => {
+  injectForms(div, answers)
+})
 document.querySelectorAll('form.quizz').forEach(form => {
   form.addEventListener('submit', e => {
     e.preventDefault()
@@ -114,6 +185,8 @@ document.querySelectorAll('form.quizz').forEach(form => {
       expected: {},
       result: {}
     }
+    let nbGood = 0
+    let nbTotal = 0
     Object.keys(answers).forEach(name => {
       const element = document.querySelector(`.custom-block[data-name="${name}"]`)
       const title = element.querySelector('.custom-block-heading').textContent
@@ -140,9 +213,11 @@ document.querySelectorAll('form.quizz').forEach(form => {
           }
           statistics.result[title].labels.push(label.trim())
         })
+      nbTotal++
       if (!element.classList.contains('quizz-bad') && !element.classList.contains('quizz-forget')) {
         element.classList.add('quizz-good')
         statistics.result[title].evaluation = 'ok'
+        nbGood++
       }
     })
     const csrfmiddlewaretoken = document.querySelector('input[name=\'csrfmiddlewaretoken\']').value
@@ -153,6 +228,10 @@ document.querySelectorAll('form.quizz').forEach(form => {
     xhttp.setRequestHeader('X-CSRFToken', csrfmiddlewaretoken)
     statistics.url = form.parentElement.previousElementSibling.firstElementChild.href
     xhttp.send(JSON.stringify(statistics))
-    console.log(statistics)
+    const percentOfAnswers = (100 * 1.0 * nbGood / nbTotal).toLocaleString('fr-FR', {
+      minimumIntegerDigits: 1,
+      useGrouping: false
+    })
+    form.querySelector('.result').innerText = `Vous avez bien répondu à ${percentOfAnswers}% des questions.`
   })
 })

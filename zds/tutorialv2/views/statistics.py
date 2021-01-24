@@ -56,6 +56,7 @@ class ContentQuizzStatistics(SingleOnlineContentFormViewMixin):
                     related_content=self.object, related_question=db_question, full_answer_id=resp_id, answer=answer
                 )
                 stat.save()
+        self.template_name = self.public_content_object.get_absolute_url_online()
         return StreamingHttpResponse(dumps({"status": "ok"}))
 
 

@@ -27,15 +27,9 @@
         </a>
     </h2>
     {% if extract.text %}
-        <div class="extract-wrapper {% if extract.is_quizz %}quizz{% endif %}">
-            {% if extract.is_quizz %}
-                <form action="{% url 'content:answer-quizz' content.pk content.slug %}" class="quizz">
-            {% endif %}
+        <div class="extract-wrapper {% if extract.is_quizz %}quizz{% endif %}" data-quizz-validate="{% trans 'Valider le Quizz' %}"
+             data-heading-level="h3" data-answer-url="{% url 'content:answer-quizz' content.pk content.slug %}">
             {{ extract.get_text|emarkdown:is_js }}
-            {% if extract.is_quizz %}
-                <button type="submit" aria-label="{% trans 'Valider le Quizz' %}" class="validate-quizz btn-submit">{% trans 'Valider le Quizz' %}</button>
-                </form>
-            {% endif %}
         </div>
     {% endif %}
 {% endfor %}
