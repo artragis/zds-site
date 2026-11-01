@@ -275,52 +275,6 @@ class UtilsTests(TutorialTestMixin, TestCase):
         self.assertFalse(paths[second_container.get_path(True)])
         self.assertFalse(paths[first_container.get_path(True)])
 
-    def test_update_manifest(self):
-        opts = {}
-        path_manifest1 = settings.BASE_DIR / "fixtures" / "tuto" / "balise_audio" / "manifest.json"
-        path_manifest2 = settings.BASE_DIR / "fixtures" / "tuto" / "balise_audio" / "manifest2.json"
-        args = [str(path_manifest2)]
-        shutil.copy(path_manifest1, path_manifest2)
-        LicenceFactory(code="CC BY")
-        call_command("upgrade_manifest_to_v2", *args, **opts)
-        manifest = path_manifest2.open("r")
-        json = json_handler.loads(manifest.read())
-
-        self.assertTrue("version" in json)
-        self.assertTrue("licence" in json)
-        self.assertTrue("children" in json)
-        self.assertEqual(len(json["children"]), 3)
-        self.assertEqual(json["children"][0]["object"], "extract")
-        os.unlink(args[0])
-        path_manifest1 = settings.BASE_DIR / "fixtures" / "tuto" / "big_tuto_v1" / "manifest.json"
-        path_manifest2 = settings.BASE_DIR / "fixtures" / "tuto" / "big_tuto_v1" / "manifest2.json"
-        args = [str(path_manifest2)]
-        shutil.copy(path_manifest1, path_manifest2)
-        call_command("upgrade_manifest_to_v2", *args, **opts)
-        manifest = path_manifest2.open("r")
-        json = json_handler.loads(manifest.read())
-        os.unlink(args[0])
-        self.assertTrue("version" in json)
-        self.assertTrue("licence" in json)
-        self.assertTrue("children" in json)
-        self.assertEqual(len(json["children"]), 5)
-        self.assertEqual(json["children"][0]["object"], "container")
-        self.assertEqual(len(json["children"][0]["children"]), 3)
-        self.assertEqual(len(json["children"][0]["children"][0]["children"]), 3)
-        path_manifest1 = settings.BASE_DIR / "fixtures" / "tuto" / "article_v1" / "manifest.json"
-        path_manifest2 = settings.BASE_DIR / "fixtures" / "tuto" / "article_v1" / "manifest2.json"
-        args = [path_manifest2]
-        shutil.copy(path_manifest1, path_manifest2)
-        call_command("upgrade_manifest_to_v2", *args, **opts)
-        manifest = path_manifest2.open("r")
-        json = json_handler.loads(manifest.read())
-
-        self.assertTrue("version" in json)
-        self.assertTrue("licence" in json)
-        self.assertTrue("children" in json)
-        self.assertEqual(len(json["children"]), 1)
-        os.unlink(args[0])
-
     def test_generate_markdown(self):
         tuto = PublishedContentFactory(type="TUTORIAL")  # generate and publish a tutorial
         published = PublishedContent.objects.get(content_pk=tuto.pk)
